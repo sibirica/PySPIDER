@@ -17,7 +17,7 @@ from commons.z3base import *
 
 # list of substitutions to go between plaintext and LaTeX output
 latex_replacements = {'·': '\\cdot', '²': '^2', '³': '^3', '⁴': '^4', '⁵': '^5', '⁶': '^6',
-                      '⁷': '^7', '⁸': '^8', '⁹': '^9', '∂': '\\partial '}
+                      '⁷': '^7', '⁸': '^8', '⁹': '^9', '∂': '\\partial'}
 for letter in lowercase_greek_letters:
     latex_replacements[letter] = '\\'+ unicodedata.name(letter).split()[-1].lower()
 
@@ -27,6 +27,9 @@ def multiple_replace(string, rep_dict):
 
 def wrap_subscripts(string):
     return re.sub(r'_([A-z0-9\\]*)', r'_{\1}', string)
+
+def latexify(string):
+    return re.sub(r'\\partial', r'\\partial_', wrap_subscripts(multiple_replace(string, latex_replacements)))
 
 # increment all VarIndices in an expression
 def inc_inds(expr: EinSumExpr[VarIndex | LiteralIndex], shift=1):
@@ -628,7 +631,7 @@ class Equation[T, Derivand]:  # can represent equation (expression = 0) OR expre
         pretty_str = ' + '.join([num_format.format(coeff) + ' · ' + str(term) if coeff != 1 else str(term)
                              for coeff, term in zip(self.coeffs, self.terms)]) + " = 0"
 
-        return wrap_subscripts(multiple_replace(pretty_str, latex_replacements)) if latex_output else pretty_str
+        return latexify(pretty_str) if latex_output else pretty_str
 
     def __eq__(self, other):
         return self.terms == other.terms and self.coeffs == other.coeffs
