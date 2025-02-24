@@ -448,6 +448,9 @@ def sparse_reg_bf(theta, scaler, initializer, residual, model_iterator, threshol
         h_test = 0
     h, w = theta.shape
     test_train_ratio = h_test/h
+    # note that ||Theta*c|| is invariant under orthogonal transformations! so we add QR decomposition for efficiency+better conditioning
+    theta = np.linalg.qr(theta, mode='r')
+    theta_test = np.linalg.qr(theta_test, mode='r') if h_test>0 else None
         
     ### CHECK ONE-TERM MODELS
     nrm = np.zeros(w)

@@ -194,7 +194,7 @@ class EinSumExpr[T](ABC):
             nonlocal index_map
             return expr.map(expr_map=mapper, index_map=index_map)
         ms = mapper(self)
-        src_check = lambda x: x.src if hasattr(x, 'src') else None
+        #src_check = lambda x: x.src if hasattr(x, 'src') else None
         return ms
 
     def purge_indices(self): # return a copy with only IndexHoles

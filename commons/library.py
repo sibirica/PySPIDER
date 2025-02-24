@@ -29,7 +29,8 @@ def wrap_subscripts(string):
     return re.sub(r'_([A-z0-9\\]*)', r'_{\1}', string)
 
 def latexify(string):
-    return re.sub(r'\\partial', r'\\partial_', wrap_subscripts(multiple_replace(string, latex_replacements)))
+    step1 = re.sub(r'\\partial', r'\\partial_', wrap_subscripts(multiple_replace(string, latex_replacements)))
+    return re.sub(r']}', r'}]', step1)
 
 # increment all VarIndices in an expression
 def inc_inds(expr: EinSumExpr[VarIndex | LiteralIndex], shift=1):
