@@ -2,10 +2,10 @@ import numpy as np
 from commons.sr_utils import *
 
 ### forced_col (for inhomogeneous regression) is UNTESTED
-def TInvPower(A, k, x0=None, mu0=None, tol=1e-12, exact=True, max_iter=50, verbose=False, forced_col=None):
+def TInvPower(A, k, x0=None, mu0=None, tol=1e-12, exact=True, fixed_mu=True, max_iter=50, verbose=False, forced_col=None):
     w = A.shape[0]
     if x0 is None:
-        x = smallest_sv(A)
+        x = smallest_eig(A)
     else:
         x = x0
     if mu0 is None:
@@ -35,7 +35,8 @@ def TInvPower(A, k, x0=None, mu0=None, tol=1e-12, exact=True, max_iter=50, verbo
         else: # hard threshold without finding exact solution
             y = keep_inds(y, inds)
         y /= np.linalg.norm(y)
-        #mu = y.T @ A @ y # comment out to fix mu
+        if not fixed_mu:
+            mu = y.T @ A @ y # comment out to fix mu
         update_size = min(np.linalg.norm(y - x), np.linalg.norm(y + x))/np.linalg.norm(y)
         if verbose:
             print("x:", x, "y:", y, "mu:", mu, "update_size:", update_size)

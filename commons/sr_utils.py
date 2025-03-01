@@ -21,6 +21,17 @@ def smallest_sv(A, inds=None, value=False):
     else:
         return V[:, -1] # smallest singular vector
 
+def smallest_eig(A, inds=None, value=False):
+    if inds is None:
+        lambdas, vs = np.linalg.eig(A)
+    else:
+        lambdas, vs = np.linalg.eig(A[np.ix_(inds, inds)])
+    idx = lambdas.argsort()[::-1]   
+    if value:
+        return lambdas[0]
+    else:
+        return vs[:, 0]
+
 #inhomogeneous regression is UNTESTED
 #def solve_ATA(A, inds, inhomog_col=None):
 #    w = A.shape[1]
@@ -56,7 +67,7 @@ def solve_ATA(A, inds, inhomog_col=None): # A here is A^TA
     x = np.zeros(shape=(w,))
     inds = list(inds)
     if inhomog_col is None:
-        x[inds] = smallest_sv(A[np.ix_(inds, inds)]) # work on submatrix with inds
+        x[inds] = smallest_eig(A[np.ix_(inds, inds)]) # work on submatrix with inds
     else: # note that [A b]^T[A b] = [A^TA A^Tb; ... ...]
         inds_minus_b = inds.copy()
         inds_minus_b.remove(inhomog_col)

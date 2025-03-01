@@ -375,7 +375,7 @@ class Threshold(object):
                 print("Jumps:", jumps)
                 print('optimal i', i)
             return i
-        elif self.type == 'information': # minimize information criterion - DUBIOUS criterion
+        elif self.type == 'information': # minimize information criterion
             h = theta.shape[0]
             ics = [self.information_criterion(lambd, i+1, h) for i, lambd in enumerate(lambdas)]
             opt_i = np.argmin(ics)
@@ -390,7 +390,7 @@ class Threshold(object):
             while lambdas[i]/lambda1>self.epsilon and i<len(lambdas):
                 i += 1
             return i
-        elif self.type == 'pareto': # select model before largest residual increase - DUBIOUS criterion
+        elif self.type == 'pareto': # select model before largest residual increase - don't use this one
             jumps = lambdas[1:]/lambdas[:-1]
             biggest_jump = np.argmax(jumps)
             if verbose:
@@ -613,7 +613,7 @@ def evaluate_model(theta, model_vector, scaler, residual, verbose=False):
     model_vector, lambd = scaler.postprocess_multi_term(xi=model_vector, lambd=lambd, norm=residual.norm, verbose=verbose)
     return lambd
 
-# taken with minor modifications from Bertsimas paper code
+# taken with minor modifications from Bertsimas & Gurnee, 2023
 def AIC(lambd, k, m, add_correction=True):
     rss = lambd ** 2
     aic = 2 * k + m * np.log(rss / m)
