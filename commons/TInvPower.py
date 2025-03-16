@@ -2,7 +2,7 @@ import numpy as np
 from commons.sr_utils import *
 
 ### forced_col (for inhomogeneous regression) is UNTESTED
-def TInvPower(A, k, x0=None, mu0=None, tol=1e-12, exact=True, fixed_mu=True, max_iter=50, verbose=False, forced_col=None):
+def TInvPower(A, k, x0=None, mu0=None, tol=1e-12, exact=True, fixed_mu=False, max_iter=50, verbose=False, forced_col=None):
     w = A.shape[0]
     if x0 is None:
         x = smallest_eig(A)
@@ -17,8 +17,8 @@ def TInvPower(A, k, x0=None, mu0=None, tol=1e-12, exact=True, fixed_mu=True, max
         print("non-sparse x: ", x)
     update_size = np.inf 
     it = 0
+    x /= np.linalg.norm(x)
     while update_size>tol and it<max_iter:
-        x /= np.linalg.norm(x)
         try:
             y = np.linalg.solve(A - mu * np.eye(w), x) # Rayleigh iteration
             # y = np.linalg.solve(A, x) # pure inverse iteration

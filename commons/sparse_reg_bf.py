@@ -32,9 +32,9 @@ class Scaler(object): # pre- and postprocessing by scaling/nondimensionalizing d
         self.sub_inds = sub_inds if sub_inds is not None else list(range(self.full_w)) # default is keeping all indices
         self.w = len(self.sub_inds)
         # useful if we want to reuse a Scaler except with different sub_inds
-        self.full_cs = np.array(char_sizes) if char_sizes else np.ones(shape=(self.w,))
+        self.full_cs = np.array(char_sizes) if char_sizes is not None else np.ones(shape=(self.w,))
         self.char_sizes = self.full_cs[self.sub_inds]
-        self.row_norms = np.array(row_norms) if row_norms else None
+        self.row_norms = np.array(row_norms) if row_norms is not None else None
         self.unit_rows = unit_rows
         
         self.train_fraction = train_fraction # test-train split fraction
@@ -110,7 +110,7 @@ class Scaler(object): # pre- and postprocessing by scaling/nondimensionalizing d
 class Initializer(object): # selecting initial guess
     def __init__(self, method, start_k=None):
         self.method = method
-        if start_k is None:
+        if start_k is not None:
             self.start_k = start_k
         else:
             self.start_k = 2 if method == 'combinatorial' else 10
@@ -365,7 +365,7 @@ class Threshold(object):
     
     def select_model(self, lambdas, theta, lambda1, verbose):
         if self.n_terms is not None:
-            return np.min(theta.shape[1], self.n_terms-1)
+            return min(theta.shape[1], self.n_terms-1)
         if self.type == 'jump': # check when lambda>delta and jump in lambda>gamma
             jumps = lambdas[:-1]/lambdas[1:]
             i = len(lambdas)-1
@@ -436,7 +436,10 @@ def sparse_reg_bf(theta, scaler, initializer, residual, model_iterator, threshol
             print('Residual normalization:', residual.norm)
     
     ### PREPROCESSING
+    #print("Initial theta:", theta)
     theta = scaler.scale_theta(theta)
+    #print("Scaled theta:", theta)
+
     represent = lambda term: term if term_names is None else term_names[term]
     if term_names is not None and verbose:
         print(f"Starting regression with the sublibrary {term_names}")

@@ -31,6 +31,7 @@ def smallest_eig(A, inds=None, value=False):
         return lambdas[0]
     else:
         return vs[:, 0]
+    eigenVectors = eigenVectors[:,idx]
 
 #inhomogeneous regression is UNTESTED
 #def solve_ATA(A, inds, inhomog_col=None):
