@@ -26,12 +26,13 @@ def smallest_eig(A, inds=None, value=False):
         lambdas, vs = np.linalg.eig(A)
     else:
         lambdas, vs = np.linalg.eig(A[np.ix_(inds, inds)])
-    idx = lambdas.argsort()[::-1]   
+    #idx = lambdas.argsort()[::-1]
+    #vs = vs[:,idx]
+    idx = np.argmin(lambdas)
     if value:
-        return lambdas[0]
+        return lambdas[idx]
     else:
-        return vs[:, 0]
-    eigenVectors = eigenVectors[:,idx]
+        return vs[:, idx]
 
 #inhomogeneous regression is UNTESTED
 #def solve_ATA(A, inds, inhomog_col=None):

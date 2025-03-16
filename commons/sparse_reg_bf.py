@@ -144,7 +144,7 @@ class Initializer(object): # selecting initial guess
             iter_direction = "backward"
         elif self.method == 'power':
             sigma_in = theta.T @ theta 
-            xi, mu, it = TInvPower(sigma_in, self.start_k, mu0=0, verbose=False, forced_col=self.inhomog_col)
+            xi, mu, it = TInvPower(sigma_in, self.start_k, mu0=None, verbose=False, forced_col=self.inhomog_col)
             if verbose:
                 print("mu:", mu, ", # of iterations: ", it)
             lambd = np.linalg.norm(theta @ xi) # always return absolute residual until postprocessing
@@ -309,7 +309,7 @@ class ModelIterator(object): # selecting next iterate and enforcing stopping con
     
     def check_exit(self, xis, lambdas, verbose):
         if self.k!=1 and self.k!=self.max_k: # we haven't finished iterating to the end
-            return False # it is possible to add checking early stopping conditions on lambdas here
+            return False # it is possible to add early stopping conditions on lambdas here
         new_terms = np.abs(np.sign(xis))
         old_terms = np.abs(np.sign(self.state))
         differences = new_terms-old_terms
