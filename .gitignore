@@ -25,7 +25,8 @@ pip-delete-this-directory.txt
 *.mat
 *.txt
 *.csv
-/data
+continuous/data
+discrete/data
 continuous/NSE2D
 discrete/viscek
 discrete/Matt

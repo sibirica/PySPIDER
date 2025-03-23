@@ -430,15 +430,16 @@ def sparse_reg_bf(theta, scaler, initializer, residual, model_iterator, threshol
         residual.set_norm(scaler.norm_col(theta, residual.anchor_col))
         if verbose:
             print('Residual normalization:', residual.norm)
-    elif residual.residual_type == "matrix_relative":
-        residual.set_norm(np.linalg.norm(theta)/np.sqrt(theta.shape[1])) 
-        if verbose:
-            print('Residual normalization:', residual.norm)
+
     
     ### PREPROCESSING
     #print("Initial theta:", theta)
     theta = scaler.scale_theta(theta)
     #print("Scaled theta:", theta)
+    if residual.residual_type == "matrix_relative":
+        residual.set_norm(np.linalg.norm(theta)/np.sqrt(theta.shape[1])) 
+        if verbose:
+            print('Residual normalization:', residual.norm)
 
     represent = lambda term: term if term_names is None else term_names[term]
     if term_names is not None and verbose:
@@ -593,16 +594,16 @@ def evaluate_model(theta, model_vector, scaler, residual, verbose=False):
         residual.set_norm(scaler.norm_col(theta, residual.anchor_col))
         if verbose:
             print('Residual normalization:', residual.norm)
-    elif residual.residual_type == "matrix_relative":
-        residual.set_norm(np.linalg.norm(theta)/theta.shape[1]) 
-        if verbose:
-            print('Residual normalization:', residual.norm)
 
     ### PREPROCESSING
     theta = scaler.scale_theta(theta)   
     model_vector = scaler.scale_model(model_vector)
     h, w = theta.shape
 
+    if residual.residual_type == "matrix_relative":
+        residual.set_norm(np.linalg.norm(theta)/theta.shape[1]) 
+        if verbose:
+            print('Residual normalization:', residual.norm)
     if residual.residual_type == "dominant_balance":
         qc_cols = np.zeros(shape=(w,))
         for term in model_iterator.terms:
@@ -613,7 +614,7 @@ def evaluate_model(theta, model_vector, scaler, residual, verbose=False):
         if verbose:
             print('Residual normalization:', residual.norm)
 
-    model_vector, lambd = scaler.postprocess_multi_term(xi=model_vector, lambd=lambd, norm=residual.norm, verbose=verbose)
+    model_vector, lambd, _ = scaler.postprocess_multi_term(xi=model_vector, lambd=np.linalg.norm(theta @ model_vector)/residual.norm, norm=residual.norm, verbose=verbose)
     return lambd
 
 # taken with minor modifications from Bertsimas & Gurnee, 2023

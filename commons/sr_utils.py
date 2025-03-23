@@ -15,10 +15,10 @@ def smallest_sv(A, inds=None, value=False):
         U, Sigma, V = np.linalg.svd(A[:, inds], full_matrices=True)
         #print("SMALLEST_SV", A[np.ix_(inds, inds)], Sigma)
         #print("INDS", inds)
-    V = V.transpose()  # since numpy SVD returns the transpose
     if value:
         return Sigma[-1] # smallest singular value
     else:
+        V = V.transpose()  # since numpy SVD returns the transpose
         return V[:, -1] # smallest singular vector
 
 def smallest_eig(A, inds=None, value=False):

@@ -224,7 +224,9 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
         rho_matches = regex_find(all_cgps, r'ρ')
         rho_ind = next(rho_matches)[0]
         rho = all_cgps[rho_ind]
-        rho_std = np.std(np.dstack([self.field_dict[rho, domain] for domain in self.domains]))
+        all_rho_data = np.dstack([self.field_dict[rho, domain] for domain in self.domains])
+        rho_std = np.std(all_rho_data)
+        #print(all_rho_data)
         #rho_std = np.std(np.dstack([self.cg_dict[rho_cgp, (), domain] for domain in self.domains]))
         self.scale_dict['rho']['std'] = rho_std
 

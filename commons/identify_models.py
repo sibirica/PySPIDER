@@ -25,7 +25,9 @@ def identify_equations(lib_object, reg_opts, print_opts=None, threshold=1e-5, mi
     if print_opts is None:
         print_opts = {'num_format': '{0:.3g}', 'latex_output': False}
     if excluded_terms is None:
-        excluded_terms = set()
+        excluded_terms_copy = set()
+    else:
+        excluded_terms_copy = excluded_terms.copy()
     # this can be eliminated by keeping track of two different max_complexities in args
     lib_max_complexity = max([term.complexity for term in library])  # generate list of derived terms up to here
     if max_complexity is None:
@@ -35,7 +37,7 @@ def identify_equations(lib_object, reg_opts, print_opts=None, threshold=1e-5, mi
     for complexity in range(min_complexity, max_complexity + 1):
         while len(equations) < max_equations:
             selection = [(term, i) for (i, term) in enumerate(library) if term.complexity <= complexity
-                         and term not in excluded_terms]
+                         and term not in excluded_terms_copy]
             if len(selection) == 0:  # no valid terms of this complexity
                 break
             sublibrary = [s[0] for s in selection]
@@ -79,13 +81,14 @@ def identify_equations(lib_object, reg_opts, print_opts=None, threshold=1e-5, mi
                 #if 'verbose' in reg_opts.keys() and reg_opts['verbose']:
                 #    print("Inferred equation:", new_eq)
                 #    print("Excluded term:", lhs)
-                excluded_terms.add(lhs)
-                #for t in excluded_terms:
+                excluded_terms_copy.add(lhs)
+                #for t in excluded_terms_copy:
                 #    print(f"{lhs} =? {t}:", lhs==t)
                 #if 'verbose' in reg_opts.keys() and reg_opts['verbose']:
-                #    print("All excluded terms so far:", excluded_terms)
+                #    print("All excluded terms so far:", excluded_terms_copy)
                 derived_eqns[str(eq)].append(form_equation(lhs, rhs))
-    return equations, lambdas, reg_results, derived_eqns, excluded_terms
+            #print("All excluded terms so far:", excluded_terms_copy)
+    return equations, lambdas, reg_results, derived_eqns, excluded_terms_copy
 
 def interleave_identify(lib_objects, reg_opts_list, print_opts=None, threshold=1e-5, min_complexity=1,  # ranks = None
                         max_complexity=None, max_equations=999, timed=True, experimental=True,
@@ -93,39 +96,46 @@ def interleave_identify(lib_objects, reg_opts_list, print_opts=None, threshold=1
     equations = []
     lambdas = []
     reg_results = []
-    derived_eqns = {}
-    #if ranks is None:
-    #    ranks = (0, 1, 2)
     libraries = [lib_object.terms for lib_object in lib_objects]
+    irreps = [lib_object.irrep for lib_object in lib_objects]
+    derived_eqns = {irrep: set() for irrep in irreps}
     
     if excluded_terms is None:
-        excluded_terms = set()
+        excluded_terms = {irrep: set() for irrep in irreps}
     if max_complexity is None:
         max_complexity = int(np.ceil(max([term.complexity for library in libraries for term in library])))
     concat_libs = reduce(add, libraries, [])
     primes = get_primes(concat_libs, max_complexity)
     for complexity in range(min_complexity, max_complexity + 1):
         for lib_object, reg_opts in zip(lib_objects, reg_opts_list):
+            irrep = lib_object.irrep
             #if 'verbose' in reg_opts.keys() and reg_opts['verbose']:
-            print("--- WORKING ON LIBRARY WITH IRREP", lib_object.irrep, "AT COMPLEXITY", complexity, '---')
-            #print("Symmetry:", translate_symmetry(library[0].symmetry()))
+                #print("Symmetry:", translate_symmetry(library[0].symmetry()))
+            print("--- WORKING ON LIBRARY WITH IRREP", irrep, "AT COMPLEXITY", complexity, '---')
             eqs_i, lbds_i, rrs_i, der_eqns_i, exc_terms_i = identify_equations(lib_object, reg_opts,
                                                                         threshold=threshold,
                                                                         min_complexity=complexity,
                                                                         max_complexity=complexity,
                                                                         max_equations=max_equations, timed=timed,
-                                                                        excluded_terms=excluded_terms,
+                                                                        excluded_terms=excluded_terms[irrep],
                                                                         experimental=experimental, primes=primes)
         
             equations += eqs_i
             lambdas += lbds_i
             reg_results += rrs_i
+            #print("Excluded terms:", exc_terms_i)
             match lib_object.irrep:
                 case int() | FullRank(): # these implications are always true
-                    derived_eqns.update(der_eqns_i)
-                    excluded_terms.update(exc_terms_i)
-                case Antisymmetric() | SymmetricTraceFree():
-                    pass # these implications depend on the specific irrep's symmetry and shouldn't be reused
+                    #print("Updating all irreps with excluded terms:")
+                    for irrep in irreps: # update implications for all irreps
+                        derived_eqns[irrep].update(der_eqns_i)
+                        excluded_terms[irrep].update(exc_terms_i)
+                case Antisymmetric() | SymmetricTraceFree(): 
+                    # these implications depend on the specific irrep's symmetry and shouldn't be reused
+                    #print("Updating this irrep with excluded terms:")
+                    derived_eqns[irrep].update(der_eqns_i)
+                    excluded_terms[irrep].update(exc_terms_i)
+                    #print("Excluded terms now:", excluded_terms[irrep])
     return equations, lambdas, reg_results, derived_eqns, excluded_terms
 
 def make_equation_from_Xi(reg_result, sublibrary, threshold):
