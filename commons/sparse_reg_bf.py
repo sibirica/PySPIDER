@@ -161,7 +161,7 @@ class Initializer(object): # selecting initial guess
         return f"Initializer(method={self.method}, start_k={self.start_k})"
 
 class ModelIterator(object): # selecting next iterate and enforcing stopping condition
-    def __init__(self, max_k, backward_forward=True, max_passes=10): #threshold, brute_force=True
+    def __init__(self, max_k, backward_forward=True, max_passes=10, use_best_solution=True): #threshold, brute_force=True
         self.max_k = max_k # do not try models with more than max_k terms
         #self.threshold = threshold # threshold object
         self.backward_forward = backward_forward
@@ -174,10 +174,16 @@ class ModelIterator(object): # selecting next iterate and enforcing stopping con
         self.direction = None # forward: dropping terms; backward: adding terms
         self.terms = None # indices of non-zero terms
         #self.has_reversed = False # True if backward-forward iteration has already turned around
-        self.state = None
+        self.state = None # most recently saved set of xis
         #self.stopped_early = False # may want to set True if early stopping so selection is clear
         self.max_passes = max_passes # to prevent infinite loop from ever occuring
         self.passes = 0
+
+        self.use_best_solution = use_best_solution
+        # best xi/lambda pairs found so far (and associated test errors)
+        self.best_state = None
+        self.best_lambdas = None
+        self.best_test_lambdas = None
         
     def __repr__(self):
         return f"ModelIterator(max_k={self.max_k}, backward_forward={self.backward_forward}, max_passes={self.max_passes}, inhomog={self.inhomog}, inhomog_col={self.inhomog_col}, k={self.k}, direction={self.direction}, terms={self.terms}, passes={self.passes})"
@@ -196,6 +202,9 @@ class ModelIterator(object): # selecting next iterate and enforcing stopping con
         self.passes = 0
         self.terms = None
         self.state = None
+        self.best_state = None
+        self.best_lambdas = None
+        self.best_test_lambdas = None # don't forget
               
     #def set_k(self, k):
     #    self.k = k
@@ -216,8 +225,23 @@ class ModelIterator(object): # selecting next iterate and enforcing stopping con
         self.inhomog = inhomog
         self.inhomog_col = scaler.index(inhomog_col)
     
-    def save_state(self, xis):
+    def save_state(self, xis, lambdas, test_lambdas, verbose): # set the internal state & update best solutions found so far
         self.state = np.copy(xis)
+        if self.best_state is None or not self.use_best_solution: # no values have been set yet or we are just saving last state
+            if verbose:
+                print("Setting best state for the first time...")
+            self.best_state = np.copy(xis)
+            self.best_lambdas = np.copy(lambdas)
+            self.best_test_lambdas = np.copy(test_lambdas)
+        else: # model_iterator returns the best solution up to this point
+            for i in range(xis.shape[0]): # update each row individually
+                if self.best_lambdas[i]>lambdas[i]: # better solution has been found for this sparsity
+                    if verbose:
+                        print(f"Best lambda for k={i}: {self.best_lambdas[i]} -> {lambdas[i]}")
+                        #print(f"Best xi for k={i}: {self.best_state[i]} -> {xis[i]}")
+                    self.best_state[i, :] = xis[i]
+                    self.best_lambdas[i] = lambdas[i]
+                    self.best_test_lambdas[i] = test_lambdas[i]
         
     def other_terms(self, w): # return range(w)\terms
         return [i for i in range(w) if i not in self.terms]
@@ -307,14 +331,15 @@ class ModelIterator(object): # selecting next iterate and enforcing stopping con
             print("Adding term:", represent(best))
         return best
     
-    def check_exit(self, xis, lambdas, verbose):
-        if self.k!=1 and self.k!=self.max_k: # we haven't finished iterating to the end
+    def check_exit(self, xis, lambdas, test_lambdas, verbose):
+        if self.k!=1 and self.k!=self.max_k: # we haven't finished iterating to one of the ends of the pass range
             return False # it is possible to add early stopping conditions on lambdas here
         new_terms = np.abs(np.sign(xis))
         old_terms = np.abs(np.sign(self.state))
         differences = new_terms-old_terms
         if verbose:
             print("Changed terms:", differences)
+        self.save_state(xis, lambdas, test_lambdas, verbose) # update iterator's saved solutions
         if self.backward_forward and np.any(differences): # entries in xis have changed via iteration
             self.passes += 1
             if self.passes>=self.max_passes:
@@ -325,7 +350,6 @@ class ModelIterator(object): # selecting next iterate and enforcing stopping con
                 #print("Current xis:", xis)
                 #print("Saved xis:", self.state)
                 print(f"{self.passes} passes, continuing backward-forward iteration...")
-            self.save_state(xis) # update xis
             return False
         if verbose:
             print("Iteration completed.")
@@ -507,7 +531,6 @@ def sparse_reg_bf(theta, scaler, initializer, residual, model_iterator, threshol
         w_inds = np.array(range(w))
         model_iterator.set_terms(w_inds[xi!=0], verbose) # NOTE that the indices are wrt sublibrary!
         actual_k = len(model_iterator.terms)
-        model_iterator.save_state(xis) # save current state of xis to check if no progress has been made
         #print(model_iterator)
         
         if residual.residual_type == "dominant_balance":
@@ -529,7 +552,8 @@ def sparse_reg_bf(theta, scaler, initializer, residual, model_iterator, threshol
                 xis[k_i-1, :] = xis[k-1, :]
                 lambdas[k_i-1] = lambdas[k-1]
                 test_lambdas[k_i-1] = test_lambdas[k-1]
-        
+
+        model_iterator.save_state(xis, lambdas, test_lambdas, verbose) # save initial state
         exit = False
         while not exit:
             ### ITERATION RULE
@@ -545,12 +569,13 @@ def sparse_reg_bf(theta, scaler, initializer, residual, model_iterator, threshol
             #    print("current xis:", xis)
 
             ### test if final model
-            exit = model_iterator.check_exit(xis, lambdas, verbose)
+            exit = model_iterator.check_exit(xis, lambdas, test_lambdas, verbose)
         if verbose:
             print("all xis:", xis)
             print("all lambdas:", lambdas)
             print("all test lambdas:", test_lambdas)
-        ind = threshold.select_model(lambdas, theta, lambda1, verbose)
+        #ind = threshold.select_model(lambdas, theta, lambda1, verbose)
+        ind = threshold.select_model(model_iterator.best_lambdas, theta, lambda1, verbose) # we now use best solution found so far
     else: # just keep all terms
         ind = -1   
         lambdas[k-1] = lambd/residual.norm
@@ -568,8 +593,10 @@ def sparse_reg_bf(theta, scaler, initializer, residual, model_iterator, threshol
                 print('Residual normalization:', residual.norm)
     if verbose:
         print("Optimal number of terms:", ind+1 if ind!=-1 else "(all)")
-    xi, lambd = xis[ind, :], lambdas[ind]
-    lambda_test = test_lambdas[ind] if h_test>0 else None
+    #xi, lambd = xis[ind, :], lambdas[ind]
+    xi, lambd = model_iterator.best_state[ind, :], model_iterator.best_lambdas[ind] # use best solutions!
+    #lambda_test = test_lambdas[ind] if h_test>0 else None
+    lambda_test = model_iterator.best_test_lambdas[ind] if h_test>0 else None
     
     ### POSTPROCESSING
     #print('xi before rescaling:', xi)
