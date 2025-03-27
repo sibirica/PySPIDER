@@ -7,7 +7,7 @@ from convolution import *
 from commons.library import *
 from library import *
 from scipy.stats._stats import gaussian_kernel_estimate
-# uncomment if this isn't broken for you
+# uncomment the next line if it isn't broken for you
 from coarse_grain_utils import coarse_grain_time_slices, poly_coarse_grain_time_slices
 
 from commons.utils import regex_find
@@ -22,6 +22,7 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
     cutoff: float # how many std deviations to cut off weight functions at
     deltat: float
     domain_neighbors: dict[[IntegrationDomain, float], int] = None # indices of neighbors of each ID at given time
+    rho_scale: float=1 # density rescaling factor
     #field_dict: dict[tuple[Any], np.ndarray[float]] = None # storage of computed coarse-grained quantities: (cgp, dims, domains) -> array
     
     #cgps: set[CoarseGrainedPrimitive] = None # list of coarse-grained primitives involved
@@ -31,6 +32,7 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
         self.scaled_sigma = self.kernel_sigma * self.cg_res
         self.scaled_pts = self.particle_pos * self.cg_res
         self.dxs = [1 / self.cg_res] * (self.n_dimensions - 1) + [float(self.deltat)]  # spacings of sampling grid
+        #self.rho_scale = self.particle_pos.shape[0]/np.prod(self.world_size[:-1]) # mean number density
         #self.cgps = set()
 
     def make_libraries(self, max_complexity=4, max_observables=3, max_rho=999):
@@ -191,6 +193,10 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
                     data_slice[..., t] = time_slice
         if not experimental:
             data_slice *= self.cg_res ** (self.n_dimensions - 1)  # need to scale rho by res^(# spatial dims)!
+
+        # rescale prime to rho=1 units
+        data_slice /= self.rho_scale
+        
         # evaluate derivatives
         orders = prime.derivative.get_spatial_orders()
         dimorders = [orders[LiteralIndex(i)] for i in range(self.n_dimensions-1)]
@@ -211,13 +217,9 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
                 self.scale_dict[name]['std'] = np.std(self.data_dict[name])
         # also need to handle density separately
         self.scale_dict['rho'] = dict()
-        self.scale_dict['rho']['mean'] = self.particle_pos.shape[0] / np.prod(self.world_size[:-1])
-        #rho_ind = find_term(self.cgps, 'rho')
-        #rho_cgp = self.cgps[rho_ind]
-        
-        #rho_cgp = CoarseGrainedPrimitive([])
-        #rho_lp = LibraryPrimitive(DerivativeOrder(0,0), rho_cgp)
-        #rho_ip = IndexedPrimitive(rho_lp, space_orders=[0]*(self.n_dimensions-1), obs_dims=())
+        #self.rho_scale = self.particle_pos.shape[0] / np.prod(self.world_size[:-1])
+        self.scale_dict['rho']['mean'] = self.particle_pos.shape[0] / np.prod(self.world_size[:-1]) / self.rho_scale
+        #self.scale_dict['rho']['mean'] = 1
 
         #print(self.field_dict.keys())
         all_cgps = [key[0] for key in self.field_dict.keys()]

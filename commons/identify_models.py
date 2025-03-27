@@ -7,8 +7,8 @@ from library import *
 from commons.sparse_reg import *
 from commons.sparse_reg_bf import *
     
-def identify_equations(lib_object, reg_opts, print_opts=None, threshold=1e-5, min_complexity=1, # ranks=None,
-                       max_complexity=None, max_equations=999, timed=True, experimental=True,
+def identify_equations(lib_object, reg_opts, print_opts=None, threshold=1e-5, min_complexity=1,
+                       max_complexity=None, max_equations=999, timed=True, experimental=True, report_accuracy=False,
                        excluded_terms=None, primes=None):
     if timed:
         start = timer()
@@ -20,8 +20,6 @@ def identify_equations(lib_object, reg_opts, print_opts=None, threshold=1e-5, mi
     library = lib_object.terms
     Q = lib_object.Q
     
-    #if ranks is None:
-    #    ranks = (0, 1, 2)
     if print_opts is None:
         print_opts = {'num_format': '{0:.3g}', 'latex_output': False}
     if excluded_terms is None:
@@ -72,15 +70,18 @@ def identify_equations(lib_object, reg_opts, print_opts=None, threshold=1e-5, mi
                 print(f'Identified model: {eq.pstr(**print_opts)} (order {complexity}, residual {res:.2e})')
             else:               
                 print(f'Identified model: {eq.pstr(**print_opts)} (order {complexity}, train res {res:.2e}, test res {test_res:.2e})')
-
+            if report_accuracy:
+                xi = reg_result.xi
+                accuracy = compute_accuracy(Q, xi, reg_opts['scaler'])
+                print(f'(Accuracy = {accuracy:.2e})')
             # eliminate terms via infer_equations
             derived_eqns[str(eq)] = []
             for new_eq in infer_equations(eq, primes, lib_max_complexity):
                 #print("NEW_EQ:", new_eq)
                 lhs, rhs = new_eq.eliminate_complex_term()
                 #if 'verbose' in reg_opts.keys() and reg_opts['verbose']:
-                #    print("Inferred equation:", new_eq)
-                #    print("Excluded term:", lhs)
+                    # print("Inferred equation:", new_eq)
+                    # print("Excluded term:", lhs)
                 excluded_terms_copy.add(lhs)
                 #for t in excluded_terms_copy:
                 #    print(f"{lhs} =? {t}:", lhs==t)
@@ -91,7 +92,7 @@ def identify_equations(lib_object, reg_opts, print_opts=None, threshold=1e-5, mi
     return equations, lambdas, reg_results, derived_eqns, excluded_terms_copy
 
 def interleave_identify(lib_objects, reg_opts_list, print_opts=None, threshold=1e-5, min_complexity=1,  # ranks = None
-                        max_complexity=None, max_equations=999, timed=True, experimental=True,
+                        max_complexity=None, max_equations=999, timed=True, experimental=True, report_accuracy=False,
                         excluded_terms=None):
     equations = []
     lambdas = []
@@ -118,7 +119,8 @@ def interleave_identify(lib_objects, reg_opts_list, print_opts=None, threshold=1
                                                                         max_complexity=complexity,
                                                                         max_equations=max_equations, timed=timed,
                                                                         excluded_terms=excluded_terms[irrep],
-                                                                        experimental=experimental, primes=primes)
+                                                                        experimental=experimental, 
+                                                                        report_accuracy=report_accuracy, primes=primes)
         
             equations += eqs_i
             lambdas += lbds_i
@@ -180,9 +182,12 @@ def infer_equations(equation, primes, max_complexity, complexity=None):
 
 def get_all_contractions(equation):
     #print('Equation', equation)
-    ce = canonicalize(equation)
-    #print("Canonicalized:", ce)
-    yield ce # base case
+    try:
+        ce = canonicalize(equation)
+        #print("Canonicalized:", ce)
+        yield ce # base case
+    except AssertionError: # if we failed to canonicalize, then this term failed commutative validity check in z3base
+        pass
     for i in range(equation.rank):
         for j in range(i+1, equation.rank):
             #print('Contracting', i, j)

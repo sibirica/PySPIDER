@@ -32,8 +32,9 @@ class Scaler(object): # pre- and postprocessing by scaling/nondimensionalizing d
         self.sub_inds = sub_inds if sub_inds is not None else list(range(self.full_w)) # default is keeping all indices
         self.w = len(self.sub_inds)
         # useful if we want to reuse a Scaler except with different sub_inds
-        self.full_cs = np.array(char_sizes) if char_sizes is not None else np.ones(shape=(self.w,))
-        self.char_sizes = self.full_cs[self.sub_inds]
+        #self.full_cs = np.array(char_sizes) if char_sizes is not None else np.ones(shape=(self.w,))
+        #self.char_sizes = self.full_cs[self.sub_inds]
+        self.char_sizes = np.array(char_sizes)
         self.row_norms = np.array(row_norms) if row_norms is not None else None
         self.unit_rows = unit_rows
         
@@ -42,7 +43,7 @@ class Scaler(object): # pre- and postprocessing by scaling/nondimensionalizing d
     def reset_inds(self, sub_inds): # change sub_inds
         self.sub_inds = sub_inds
         self.w = len(self.sub_inds)
-        self.char_sizes = self.full_cs[self.sub_inds]
+        #self.char_sizes = self.full_cs[self.sub_inds]
     
     def index(self, col): # find the full indexing to sub_inds conversion of a given column number
         return self.sub_inds.index(col) if col is not None else None
@@ -52,9 +53,23 @@ class Scaler(object): # pre- and postprocessing by scaling/nondimensionalizing d
         #return np.linalg.norm(theta[:, idx_col])/self.full_cs[idx_col]
         return np.linalg.norm(theta[:, col])/self.full_cs[col]
     
+    # def scale_theta(self, theta): # rescale theta and select columns from subinds
+    #     theta = np.copy(theta)  # avoid bugs where array is modified in place
+    #     theta = theta[:, self.sub_inds]
+    #     for term in range(len(self.char_sizes)):
+    #         theta[:, term] /= self.char_sizes[term]  # renormalize by characteristic size
+    #     if self.row_norms is not None:
+    #         for row in range(len(self.row_norms)):
+    #             theta[row, :] *= self.row_norms[row]
+    #     elif self.unit_rows: # normalize rows to ~unit entries
+    #         h, w = theta.shape
+    #         for row in range(h):
+    #             theta[row, :] /= (np.linalg.norm(theta[row, :])/np.sqrt(w))
+    #     return theta
+
     def scale_theta(self, theta): # rescale theta and select columns from subinds
+        # note that this function now runs before sampling sub_inds columns in theta
         theta = np.copy(theta)  # avoid bugs where array is modified in place
-        theta = theta[:, self.sub_inds]
         for term in range(len(self.char_sizes)):
             theta[:, term] /= self.char_sizes[term]  # renormalize by characteristic size
         if self.row_norms is not None:
@@ -65,6 +80,9 @@ class Scaler(object): # pre- and postprocessing by scaling/nondimensionalizing d
             for row in range(h):
                 theta[row, :] /= (np.linalg.norm(theta[row, :])/np.sqrt(w))
         return theta
+    
+    def select_cols(self, theta):
+        return theta[:, self.sub_inds]
 
     def train_test_split(self, theta):
         h = theta.shape[0]
@@ -80,13 +98,13 @@ class Scaler(object): # pre- and postprocessing by scaling/nondimensionalizing d
     def scale_model(self, model): # rescale given xi vector
         model = np.copy(model)  # avoid bugs where array is modified in place
         model = model[self.sub_inds]
-        model *= self.char_sizes  # renormalize by characteristic size
+        model *= self.char_sizes[self.sub_inds]  # renormalize by characteristic size
         return model
         
-    def postprocess_multi_term(self, xi, lambd, norm, test_train_ratio=None, lambda_test=None, verbose=False): # Xi postprocessing
+    def postprocess_multi_term(self, xi, lambd, test_train_ratio=None, lambda_test=None, verbose=False): # Xi postprocessing
         full_xi = np.zeros(shape=(self.full_w,))
         #print('old xi', xi)
-        xi = xi / self.char_sizes  # renormalize by char. size
+        xi = xi / self.char_sizes[self.sub_inds]  # renormalize by char. size
         #print('new xi', xi)
         if -min(xi) > max(xi):  # ensure vectors are "positive"
             xi = -xi
@@ -99,10 +117,10 @@ class Scaler(object): # pre- and postprocessing by scaling/nondimensionalizing d
         return full_xi, lambd, lambda_test/np.sqrt(test_train_ratio) if lambda_test else None 
         #/norm # already normalized in multi-term regression
         
-    def postprocess_single_term(self, best_term, lambda1, norm, test_train_ratio=None, lambda1_test=None, verbose=False):
+    def postprocess_single_term(self, best_term, lambda1, test_train_ratio=None, lambda1_test=None, verbose=False):
         if verbose:
             print("final lambda1:", lambda1/norm)
-        return self.sub_inds[best_term], lambda1/norm, lambda1_test/norm/np.sqrt(test_train_ratio) if lambda1_test else None
+        return self.sub_inds[best_term], lambda1, lambda1_test/np.sqrt(test_train_ratio) if lambda1_test else None
     
     def __repr__(self):
         return f"Scaler(sub_inds={self.sub_inds}, char_sizes={self.char_sizes}, row_norms={self.row_norms})"
@@ -237,7 +255,7 @@ class ModelIterator(object): # selecting next iterate and enforcing stopping con
             for i in range(xis.shape[0]): # update each row individually
                 if self.best_lambdas[i]>lambdas[i]: # better solution has been found for this sparsity
                     if verbose:
-                        print(f"Best lambda for k={i}: {self.best_lambdas[i]} -> {lambdas[i]}")
+                        print(f"Best lambda for k={i+1}: {self.best_lambdas[i]} -> {lambdas[i]}")
                         #print(f"Best xi for k={i}: {self.best_state[i]} -> {xis[i]}")
                     self.best_state[i, :] = xis[i]
                     self.best_lambdas[i] = lambdas[i]
@@ -360,6 +378,7 @@ class Residual(object): # residual computation
     # residual_type "absolute" is always 1
     # residual_type "fixed_column" is computed based on a fixed column of theta
     # residual_type "matrix_relative" is relative to norm of theta[:, sub_inds] after preprocessing
+    # residual_type "accuracy" uses "matrix_relative" for regression and then theta[:, support] for reporting
     # residual_type "dominant_balance" is relative to norm of largest term in initial dominant balance
     def __init__(self, residual_type, anchor_col=None):
         self.residual_type = residual_type
@@ -459,11 +478,12 @@ def sparse_reg_bf(theta, scaler, initializer, residual, model_iterator, threshol
     ### PREPROCESSING
     #print("Initial theta:", theta)
     theta = scaler.scale_theta(theta)
-    #print("Scaled theta:", theta)
-    if residual.residual_type == "matrix_relative":
+    theta = scaler.select_cols(theta)
+    if residual.residual_type in ["matrix_relative", "accuracy"]:
         residual.set_norm(np.linalg.norm(theta)/np.sqrt(theta.shape[1])) 
         if verbose:
             print('Residual normalization:', residual.norm)
+    #print("Scaled theta:", theta)
 
     represent = lambda term: term if term_names is None else term_names[term]
     if term_names is not None and verbose:
@@ -491,6 +511,9 @@ def sparse_reg_bf(theta, scaler, initializer, residual, model_iterator, threshol
             print(f'nrm[{represent(term)}]:', nrm[term])
     best_term, lambda1 = np.argmin(nrm), min(nrm)
     lambda1_test = np.linalg.norm(theta_test[:, best_term]) if h_test>0 else None
+    if residual.residual_type in ["matrix_relative", "accuracy", "fixed_column", "absolute"]: # won't work for dominant balance
+        lambda1 = lambda1 / residual.norm
+        lambda1_test = lambda1_test / residual.norm if h_test>0 else None
 
     # HANDLE W=0 (inf), W=1 (one-term model) CASES
     if w == 0:  # no inds allowed at all
@@ -499,7 +522,7 @@ def sparse_reg_bf(theta, scaler, initializer, residual, model_iterator, threshol
         norm = residual.norm if hasattr(residual, 'norm') else 1
         best_term, lambda1, lambda1_test = scaler.postprocess_single_term(best_term=best_term, lambda1=lambda1,
                                                                           test_train_ratio=test_train_ratio, lambda1_test=lambda1_test,
-                                                                          norm=norm, verbose=verbose)
+                                                                          verbose=verbose)
         return RegressionResult(xi=[1], lambd=np.inf, best_term=best_term, lambda1=lambda1, 
                                 lambda1_test=lambda1_test, sublibrary=term_names)
         
@@ -593,17 +616,31 @@ def sparse_reg_bf(theta, scaler, initializer, residual, model_iterator, threshol
                 print('Residual normalization:', residual.norm)
     if verbose:
         print("Optimal number of terms:", ind+1 if ind!=-1 else "(all)")
+        
     #xi, lambd = xis[ind, :], lambdas[ind]
-    xi, lambd = model_iterator.best_state[ind, :], model_iterator.best_lambdas[ind] # use best solutions!
     #lambda_test = test_lambdas[ind] if h_test>0 else None
+    xi, lambd = model_iterator.best_state[ind, :], model_iterator.best_lambdas[ind] # use best solutions!
     lambda_test = model_iterator.best_test_lambdas[ind] if h_test>0 else None
+
+    if residual.residual_type == "accuracy": # switch residual from matrix_relative to accuracy for output
+        lambd, lambda1 = lambd*residual.norm, lambda1*residual.norm
+        lambda_test, lambda1_test = (lambda_test*residual.norm, lambda1_test*residual.norm) if h_test>0 else (None, None)
+        w_inds = np.array(range(w))
+        terms = w_inds[xi!=0]
+        residual.set_norm(np.linalg.norm(theta[:, terms]))
+        lambd, lambda1 = lambd/residual.norm, lambda1/residual.norm
+        lambda_test, lambda1_test = (lambda_test/residual.norm, lambda1_test/residual.norm) if h_test>0 else (None, None)
     
     ### POSTPROCESSING
     #print('xi before rescaling:', xi)
-    xi, lambd, lambda_test = scaler.postprocess_multi_term(xi=xi, lambd=lambd, norm=residual.norm,
-                                                           test_train_ratio=test_train_ratio, lambda_test=lambda_test, verbose=verbose)
+    if inhomog: # model is normalized so coeff of b column is 1 instead of unit norm, which impacts the residuals -> we fix that here
+        xi_norm = np.linalg.norm(xi)
+        lambd, lambda1 = lambd/xi_norm, lambda1/xi_norm
+        lambda_test, lambda1_test = (lambda_test/xi.norm, lambda1_test/xi.norm) if h_test>0 else (None, None)
+    xi, lambd, lambda_test = scaler.postprocess_multi_term(xi=xi, lambd=lambd, test_train_ratio=test_train_ratio, 
+                                                           lambda_test=lambda_test, verbose=verbose)
     #print('xi after rescaling:', xi)
-    best_term, lambda1, lambda1_test = scaler.postprocess_single_term(best_term=best_term, lambda1=lambda1, norm=residual.norm, 
+    best_term, lambda1, lambda1_test = scaler.postprocess_single_term(best_term=best_term, lambda1=lambda1, 
                                                                       test_train_ratio=test_train_ratio, lambda1_test=lambda1_test,
                                                                       verbose=verbose)
     
@@ -641,8 +678,22 @@ def evaluate_model(theta, model_vector, scaler, residual, verbose=False):
         if verbose:
             print('Residual normalization:', residual.norm)
 
-    model_vector, lambd, _ = scaler.postprocess_multi_term(xi=model_vector, lambd=np.linalg.norm(theta @ model_vector)/residual.norm, norm=residual.norm, verbose=verbose)
+    model_vector, lambd, _ = scaler.postprocess_multi_term(xi=model_vector, lambd=np.linalg.norm(theta @ model_vector)/residual.norm, verbose=verbose)
     return lambd
+
+def compute_accuracy(theta, xi, scaler): # compute the "accuracy" residual for an existing model
+    # preprocessing
+    theta = scaler.scale_theta(theta)   
+    theta = scaler.select_cols(theta)  
+    xi = scaler.scale_model(xi)
+
+    # find nonzero inds
+    w_inds = np.array(range(theta.shape[1]))
+    terms = w_inds[xi!=0]
+    
+    norm = np.linalg.norm(theta[:, terms])
+    xi = xi/np.linalg.norm(xi)
+    return np.linalg.norm(theta @ xi)/norm
 
 # taken with minor modifications from Bertsimas & Gurnee, 2023
 def AIC(lambd, k, m, add_correction=True):

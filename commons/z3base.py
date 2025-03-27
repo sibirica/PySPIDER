@@ -229,7 +229,7 @@ class EinSumExpr[T](ABC):
             #own_indices = sorted(list(updated.own_indices()))
             own_indices = list(updated.own_indices())
             for i, i_next in zip(own_indices, own_indices[1:]):
-                if i.src is None: # only add constraint if the first index in the pair isn't already constrained
+                if i.src is None: # for reassignment, only add constraint if the first index in the pair isn't already constrained
                     new_constraints.append(i.var <= i_next.var)
         if self.can_commute_exprs:
             duplicates = defaultdict(list)
@@ -281,8 +281,13 @@ def generate_indexings(expr: EinSumExpr[IndexHole | VarIndex]) -> Iterable[EinSu
     while (result := solver.check()) == z3.sat: # smt solver finds a new solution
         m = solver.model()
         indexing = {index: m[index.var] for index in indices}
-        yield indexed_expr.map_all_indices(
+        mapped_expr = indexed_expr.map_all_indices(
             index_map = lambda index: VarIndex(indexing[index].as_long(), src=index.src))
+        if check_commutative_validity(mapped_expr, list(mapped_expr.all_indices())): # check expression is actually valid
+            yield mapped_expr
+        #else:
+        #    print(f"{mapped_expr} failed the test")
+        
         # prevent smt solver from repeating solution
         solver.add(z3.Or(*[idx.var != val for idx, val in indexing.items()]))
     if result == z3.unknown:
@@ -294,6 +299,25 @@ def lexico_le(idsA: list[SMTIndex], idsB: list[SMTIndex]) -> z3.ExprRef:
     for a, b in zip(reversed(idsA), reversed(idsB)):
         lt = z3.Or(a.var < b.var, z3.And(a.var == b.var, lt))
     return lt
+
+# check whether this term is canonical with respect to the own_indices of commutative expressions
+def check_commutative_validity(mapped_expr: EinSumExpr[VarIndex], all_indices: List[VarIndex], inds_to_left: int=0) -> bool: 
+    if mapped_expr.can_commute_indices:
+        commuting_inds = list(mapped_expr.own_indices())
+        in_com_inds = lambda idx: idx in commuting_inds
+        must_be_sorted = (
+            list(filter(in_com_inds, all_indices[:inds_to_left]))
+            + [commuting_inds[i] for i in range(1, len(commuting_inds)) if commuting_inds[i-1] == commuting_inds[i]]
+            + list(filter(in_com_inds, all_indices[inds_to_left + len(commuting_inds):]))
+        )
+        #print(must_be_sorted)
+        if any(must_be_sorted[i] < must_be_sorted[i-1] for i in range(1, len(must_be_sorted))):
+            return False
+    for subexpr in mapped_expr.sub_exprs():
+        if not check_commutative_validity(subexpr, all_indices, inds_to_left):
+            return False
+        inds_to_left += len(list(subexpr.all_indices()))
+    return True       
 
 def free_z3_var(prefix: str, *, ctr=count()):
     return z3.Int(f"{prefix}_{next(ctr)}")
