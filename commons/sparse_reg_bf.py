@@ -119,7 +119,7 @@ class Scaler(object): # pre- and postprocessing by scaling/nondimensionalizing d
         
     def postprocess_single_term(self, best_term, lambda1, test_train_ratio=None, lambda1_test=None, verbose=False):
         if verbose:
-            print("final lambda1:", lambda1/norm)
+            print("final lambda1:", lambda1)
         return self.sub_inds[best_term], lambda1, lambda1_test/np.sqrt(test_train_ratio) if lambda1_test else None
     
     def __repr__(self):
