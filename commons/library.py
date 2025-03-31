@@ -130,7 +130,7 @@ def contract(expr: EinSumExpr[VarIndex] | Equation[VarIndex], i: int, j: int):
             return Equation(terms=[contract(t, i, j) for t in ts], coeffs=c)
         case EinSumExpr():
             n_singles = index_rank(expr.all_indices()) 
-            assert i<n_singles and j<n_singles, "Can only contract single indices"
+            assert i<n_singles and j<n_singles, f"Can only contract single indices, not ({i}, {j}) in {expr}"
             new_n_singles = n_singles - 2
             new_double = new_n_singles
             if j<i:
@@ -655,8 +655,23 @@ class Equation[T, Derivand]:  # can represent equation (expression = 0) OR expre
             #print('indices', term.all_indices(), 'srcs', [idx.src for idx in term.all_indices()])
         # canonicalize terms, removing those with 0 coefficient
         # MIGHT BE EQ_CANON?
-        coeffs = {canonicalize(term): coeff
-                  for term, coeff in coeffs.items() if coeff != 0}
+        
+        # def crashless_canonicalize(term):
+        #     try:
+        #         canon = canonicalize(term)
+        #     except AssertionError as ae:
+        #         print(f"Canonicalization of {term} failed. Reason:")
+        #         print(ae)
+        #         return term
+        #coeffs = {crashless_canonicalize(term): coeff
+        #          for term, coeff in coeffs.items() if coeff != 0}
+        
+        def eq_canonicalize(coeffs):
+            for term, coeff in coeffs.items():
+                if coeff != 0:
+                    term, sign = term.eq_canon()
+                    yield term, sign*coeff
+        coeffs = {canonicalize(term): coeff for term, coeff in eq_canonicalize(coeffs)}    
 
         if not coeffs:
             self.terms, self.coeffs = (), ()

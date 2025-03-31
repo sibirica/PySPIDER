@@ -647,8 +647,12 @@ def sparse_reg_bf(theta, scaler, initializer, residual, model_iterator, threshol
     # Reset max_k
     model_iterator.max_k = max_k_for_reset
     
-    return RegressionResult(xi=xi, lambd=lambd, best_term=best_term, lambda1=lambda1, all_xis=xis, all_lambdas=lambdas,
-                           lambda_test=lambda_test, all_lambdas_test=test_lambdas, lambda1_test=lambda1_test, sublibrary=term_names)
+    #return RegressionResult(xi=xi, lambd=lambd, best_term=best_term, lambda1=lambda1, all_xis=xis, all_lambdas=lambdas,
+    #                       lambda_test=lambda_test, all_lambdas_test=test_lambdas, lambda1_test=lambda1_test, sublibrary=term_names)
+    return RegressionResult(xi=xi, lambd=lambd, best_term=best_term, lambda1=lambda1, all_xis=model_iterator.best_state,
+                            all_lambdas=model_iterator.best_lambdas,
+                            lambda_test=lambda_test, all_lambdas_test=model_iterator.best_test_lambdas, 
+                            lambda1_test=lambda1_test, sublibrary=term_names)
 
 # evaluate specific model on Q 
 # NOTE: use scaler with same column subsampling as any models being compared with & make sure model_vector sparsity matches it
