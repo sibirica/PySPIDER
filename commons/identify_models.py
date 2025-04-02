@@ -75,7 +75,7 @@ def identify_equations(lib_object, reg_opts, print_opts=None, threshold=1e-5, mi
                 accuracy = compute_accuracy(Q, xi, reg_opts['scaler'])
                 print(f'(Accuracy = {accuracy:.2e})')
             # eliminate terms via infer_equations
-            derived_eqns[str(eq)] = []
+            derived_eqns[eq.pstr(**print_opts)] = []
             for new_eq in infer_equations(eq, primes, lib_max_complexity):
                 #print("NEW_EQ:", new_eq)
                 lhs, rhs = new_eq.eliminate_complex_term()
@@ -87,7 +87,7 @@ def identify_equations(lib_object, reg_opts, print_opts=None, threshold=1e-5, mi
                 #    print(f"{lhs} =? {t}:", lhs==t)
                 #if 'verbose' in reg_opts.keys() and reg_opts['verbose']:
                 #    print("All excluded terms so far:", excluded_terms_copy)
-                derived_eqns[str(eq)].append(form_equation(lhs, rhs))
+                derived_eqns[eq.pstr(**print_opts)].append(new_eq)
             #print("All excluded terms so far:", excluded_terms_copy)
     return equations, lambdas, reg_results, derived_eqns, excluded_terms_copy
 
@@ -99,7 +99,7 @@ def interleave_identify(lib_objects, reg_opts_list, print_opts=None, threshold=1
     reg_results = []
     libraries = [lib_object.terms for lib_object in lib_objects]
     irreps = [lib_object.irrep for lib_object in lib_objects]
-    derived_eqns = {irrep: set() for irrep in irreps}
+    derived_eqns = {irrep: dict() for irrep in irreps}
     
     if excluded_terms is None:
         excluded_terms = {irrep: set() for irrep in irreps}
@@ -121,22 +121,35 @@ def interleave_identify(lib_objects, reg_opts_list, print_opts=None, threshold=1
                                                                         excluded_terms=excluded_terms[irrep],
                                                                         experimental=experimental, 
                                                                         report_accuracy=report_accuracy, primes=primes)
-        
+            
             equations += eqs_i
             lambdas += lbds_i
             reg_results += rrs_i
             #print("Excluded terms:", exc_terms_i)
             match lib_object.irrep:
+                # case int() | FullRank(): # these implications are always true
+                #     #print(f"Updating all irreps with excluded terms: {exc_terms_i}")
+                #     for irrep in irreps: # update implications for all irreps
+                #         derived_eqns[irrep].update(der_eqns_i)
+                #         excluded_terms[irrep].update(exc_terms_i)
+                # case Antisymmetric() | SymmetricTraceFree(): 
+                #     # these implications depend on the specific irrep's symmetry and shouldn't be reused
+                #     #print("Updating this irrep with excluded terms:")
+                #     derived_eqns[irrep].update(der_eqns_i)
+                #     excluded_terms[irrep].update(exc_terms_i)
+                #     #print("Excluded terms now:", excluded_terms[irrep])
                 case int() | FullRank(): # these implications are always true
-                    #print("Updating all irreps with excluded terms:")
-                    for irrep in irreps: # update implications for all irreps
-                        derived_eqns[irrep].update(der_eqns_i)
-                        excluded_terms[irrep].update(exc_terms_i)
+                    #print(f"Updating all irreps with excluded terms: {exc_terms_i}")
+                    for new_irrep in irreps: # update implications for all irreps
+                        derived_eqns[new_irrep].update({eq: [eq_imp for eq_imp in eqs_imp if eq_imp.rank==new_irrep.rank] 
+                                                        for eq, eqs_imp in der_eqns_i.items()})
+                        excluded_terms[new_irrep].update([term for term in exc_terms_i if term.rank==new_irrep.rank])
                 case Antisymmetric() | SymmetricTraceFree(): 
                     # these implications depend on the specific irrep's symmetry and shouldn't be reused
                     #print("Updating this irrep with excluded terms:")
-                    derived_eqns[irrep].update(der_eqns_i)
-                    excluded_terms[irrep].update(exc_terms_i)
+                    derived_eqns[irrep].update({eq: [eq_imp for eq_imp in eqs_imp if eq_imp.rank==irrep.rank]
+                                                        for eq, eqs_imp in der_eqns_i.items()})
+                    excluded_terms[irrep].update([term for term in exc_terms_i if term.rank==irrep.rank])
                     #print("Excluded terms now:", excluded_terms[irrep])
     return equations, lambdas, reg_results, derived_eqns, excluded_terms
 
@@ -153,6 +166,7 @@ def make_equation_from_Xi(reg_result, sublibrary, threshold):
         zipped = [(sublibrary[i], c) for i, c in enumerate(Xi) if c != 0]
         return Equation(terms=[e[0] for e in zipped], coeffs=[e[1] for e in zipped]).canonicalize(), lambd, lambda_test, reg_result
 
+# this implementation traverses some nodes multiple times - maybe it could be optimized a bit by rewriting as BFS
 def infer_equations(equation, primes, max_complexity, complexity=None):
     if complexity is None:
         complexity = max([term.complexity for term in equation.terms])
@@ -173,7 +187,6 @@ def infer_equations(equation, primes, max_complexity, complexity=None):
 
     rem_complexity = max_complexity - complexity
     for prime in primes:
-        # RESTORE
         if prime.complexity <= rem_complexity:
             #print('prime', prime)
             #print('prime*eq', prime * equation, 'new_comp', complexity+prime.complexity)
