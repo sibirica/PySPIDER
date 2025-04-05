@@ -3,10 +3,10 @@ from __future__ import annotations
 #from functools import lru_cache
 from typing import Any, Protocol, Union, assert_type
 from abc import abstractmethod, ABC
-from collections import defaultdict
+from collections import defaultdict, Counter
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace, KW_ONLY
-from itertools import count
+from itertools import count, permutations
 import z3
 
 lowercase_greek_letters = "αβγδεζηθικλμνξοπρστυφχψω"
@@ -133,6 +133,18 @@ class LiteralIndex:
         return "xyzt"[self.value]  # if your problem has 5 dimensions you messed up
 
 Index = IndexHole | SMTIndex | VarIndex | LiteralIndex
+
+# get rank of an Einstein expression by looking at its VarIndices/IndexHoles (for LiteralIndex, return 0)
+def index_rank(indices: Iterable[VarIndex | IndexHole]):
+    index_counter = Counter(indices)
+    num_singles = len([count for index, count in index_counter.items() if count==1 and isinstance(index, VarIndex)])
+    num_holes = index_counter[IndexHole()]
+    return num_singles+num_holes
+
+# get highest index in list of indices
+def highest_index(indices: Iterable[VarIndex]):
+    # IndexHoles always count as the default of -1
+    return max((-1 if isinstance(index, IndexHole) else index.value) for index in indices) if indices else -1
 
 @dataclass(frozen=True)
 class EinSumExpr[T](ABC):
@@ -283,7 +295,8 @@ def generate_indexings(expr: EinSumExpr[IndexHole | VarIndex]) -> Iterable[EinSu
         indexing = {index: m[index.var] for index in indices}
         mapped_expr = indexed_expr.map_all_indices(
             index_map = lambda index: VarIndex(indexing[index].as_long(), src=index.src))
-        if check_commutative_validity(mapped_expr, list(mapped_expr.all_indices())): # check expression is actually valid
+        if check_commutative_validity(mapped_expr, list(mapped_expr.all_indices())) and check_subexpr_cv(mapped_expr): 
+            # check expression is actually valid
             yield mapped_expr
         #else:
         #    print(f"{mapped_expr} failed the test")
@@ -302,7 +315,7 @@ def lexico_le(idsA: list[SMTIndex], idsB: list[SMTIndex]) -> z3.ExprRef:
 
 # check whether this term is canonical with respect to the own_indices of commutative expressions
 def check_commutative_validity(mapped_expr: EinSumExpr[VarIndex], all_indices: List[VarIndex], inds_to_left: int=0) -> bool: 
-    if mapped_expr.can_commute_indices:
+    if mapped_expr.can_commute_indices: # check commutative indices
         commuting_inds = list(mapped_expr.own_indices())
         in_com_inds = lambda idx: idx in commuting_inds
         must_be_sorted = (
@@ -313,11 +326,28 @@ def check_commutative_validity(mapped_expr: EinSumExpr[VarIndex], all_indices: L
         #print(must_be_sorted)
         if any(must_be_sorted[i] < must_be_sorted[i-1] for i in range(1, len(must_be_sorted))):
             return False
+        
     for subexpr in mapped_expr.sub_exprs():
         if not check_commutative_validity(subexpr, all_indices, inds_to_left):
             return False
         inds_to_left += len(list(subexpr.all_indices()))
-    return True       
+    return True   
+
+def check_subexpr_cv(mapped_expr: EinSumExpr[VarIndex]):
+    # check commutative expressions at base by relabel+sort (only a little messy)
+    first_bound_ind = mapped_expr.rank
+    last_bound_ind = highest_index(mapped_expr.all_indices())
+    bound_inds = list(range(first_bound_ind, last_bound_ind+1))
+    for perm in permutations(bound_inds):
+        #print(bound_inds, perm)
+        perm = list(perm)
+        if perm != bound_inds:
+            imap = lambda i: VarIndex(perm[i.value-first_bound_ind]) if i.value in bound_inds else i
+            relabeled_expr = mapped_expr.map_all_indices(imap)
+            if relabeled_expr.eq_canon()[0] < mapped_expr:
+                #print(mapped_expr)
+                return False
+    return True
 
 def free_z3_var(prefix: str, *, ctr=count()):
     return z3.Int(f"{prefix}_{next(ctr)}")

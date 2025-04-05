@@ -26,6 +26,7 @@ def identify_equations(lib_object, reg_opts, print_opts=None, threshold=1e-5, mi
         excluded_terms_copy = set()
     else:
         excluded_terms_copy = excluded_terms.copy()
+    #print(excluded_terms_copy)
     # this can be eliminated by keeping track of two different max_complexities in args
     lib_max_complexity = max([term.complexity for term in library])  # generate list of derived terms up to here
     if max_complexity is None:

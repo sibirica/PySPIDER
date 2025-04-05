@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace, KW_ONLY
 from typing import List, Dict, Union, Tuple, Iterable, Generator
-from itertools import permutations
 from functools import cached_property#, lru_cache#, reduce 
 from operator import add
 from collections import defaultdict, Counter
@@ -35,18 +34,6 @@ def latexify(string):
 # increment all VarIndices in an expression
 def inc_inds(expr: EinSumExpr[VarIndex | LiteralIndex], shift=1):
     return expr.map_all_indices(lambda ind: replace(ind, value=ind.value + shift) if isinstance(ind, VarIndex) else ind)
-
-# get rank of an Einstein expression by looking at its VarIndices/IndexHoles (for LiteralIndex, return 0)
-def index_rank(indices: Iterable[VarIndex | IndexHole]):
-    index_counter = Counter(indices)
-    num_singles = len([count for index, count in index_counter.items() if count==1 and isinstance(index, VarIndex)])
-    num_holes = index_counter[IndexHole()]
-    return num_singles+num_holes
-
-# get highest index in list of indices
-def highest_index(indices: Iterable[VarIndex]):
-    # IndexHoles always count as the default of -1
-    return max((-1 if isinstance(index, IndexHole) else index.value) for index in indices) if indices else -1
 
 def canonicalize(expr: EinSumExpr[Index] | Equation):
     if isinstance(expr, Equation):
@@ -727,9 +714,10 @@ class Equation[T, Derivand]:  # can represent equation (expression = 0) OR expre
         new_coeffs = self.coeffs[:lhs_ind] + self.coeffs[lhs_ind + 1:]
         new_coeffs = [-c / self.coeffs[lhs_ind] for c in new_coeffs]
         rhs = Equation(new_terms, new_coeffs)
+        #print("LHS", lhs, "->", canonicalize(lhs))
         if return_normalization:
-            return lhs, rhs, self.coeffs[lhs_ind]
-        return lhs, rhs
+            return canonicalize(lhs), rhs, self.coeffs[lhs_ind]
+        return canonicalize(lhs), rhs
 
     def to_term(self):
         if len(self.terms) != 1:
