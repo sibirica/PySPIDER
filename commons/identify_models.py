@@ -196,12 +196,12 @@ def infer_equations(equation, primes, max_complexity, complexity=None):
 
 def get_all_contractions(equation):
     #print('Equation', equation)
-    try:
-        ce = canonicalize(equation)
-        #print("Canonicalized:", ce)
-        yield ce # base case
-    except AssertionError: # if we failed to canonicalize, then this term failed commutative validity check in z3base
-        pass
+    #try:
+    ce = canonicalize(equation)
+    #print("Canonicalized:", ce)
+    yield ce # base case
+    #except AssertionError: # if we failed to canonicalize, then this term failed commutative validity check in z3base
+    #    pass
     for i in range(equation.rank):
         for j in range(i+1, equation.rank):
             #print('Contracting', i, j)

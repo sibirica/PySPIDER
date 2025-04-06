@@ -40,7 +40,8 @@ def canonicalize(expr: EinSumExpr[Index] | Equation):
         return expr.canonicalize()
     if not expr.all_indices() or isinstance(expr.all_indices()[0], LiteralIndex):
         return expr.eq_canon()[0]
-    indexings = generate_indexings(expr)
+    #expr = secv_canon(expr)
+    indexings = generate_indexings(expr, autocorrect=True) # correctly commute things when reindexing
     try:
         canon = next(indexings)
     except StopIteration:
@@ -50,7 +51,8 @@ def canonicalize(expr: EinSumExpr[Index] | Equation):
         assert False, f"Found multiple canonical indexings for {expr} with rank {expr.rank}: {canon} and {canon2}"
     except StopIteration:
         pass
-    return canon.eq_canon()[0] # canonicalize structure too
+    return canon
+    #return canon.eq_canon()[0] # canonicalize structure too
 
 def dt_fun(expr: EinSumExpr[VarIndex]):
     if isinstance(expr, ConstantTerm):

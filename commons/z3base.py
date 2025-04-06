@@ -257,7 +257,7 @@ class EinSumExpr[T](ABC):
         constraints += new_constraints
         return updated, constraints
 
-def generate_indexings(expr: EinSumExpr[IndexHole | VarIndex]) -> Iterable[EinSumExpr[VarIndex]]:
+def generate_indexings(expr: EinSumExpr[IndexHole | VarIndex], autocorrect: bool=False) -> Iterable[EinSumExpr[VarIndex]]:
     indexed_expr, constraints = expr.canonical_indexing_problem() # includes lexicographic constraints
     assert_type(indexed_expr, EinSumExpr[SMTIndex])
     #print(indexed_expr)
@@ -295,12 +295,16 @@ def generate_indexings(expr: EinSumExpr[IndexHole | VarIndex]) -> Iterable[EinSu
         indexing = {index: m[index.var] for index in indices}
         mapped_expr = indexed_expr.map_all_indices(
             index_map = lambda index: VarIndex(indexing[index].as_long(), src=index.src))
-        if check_commutative_validity(mapped_expr, list(mapped_expr.all_indices())) and check_subexpr_cv(mapped_expr): 
+        subexpr_commut_valid, first_perm = check_subexpr_cv(mapped_expr)
+        if subexpr_commut_valid and check_commutative_validity(mapped_expr, list(mapped_expr.all_indices())): 
             # check expression is actually valid
             yield mapped_expr
-        #else:
-        #    print(f"{mapped_expr} failed the test")
-        
+        else:
+            if autocorrect:
+                #print(first_perm, check_commutative_validity(mapped_expr, list(mapped_expr.all_indices()))) 
+                #print(f"{mapped_expr} failed the test")
+                mapped_expr = secv_canon(mapped_expr, start=first_perm)
+                yield mapped_expr
         # prevent smt solver from repeating solution
         solver.add(z3.Or(*[idx.var != val for idx, val in indexing.items()]))
     if result == z3.unknown:
@@ -333,21 +337,35 @@ def check_commutative_validity(mapped_expr: EinSumExpr[VarIndex], all_indices: L
         inds_to_left += len(list(subexpr.all_indices()))
     return True   
 
-def check_subexpr_cv(mapped_expr: EinSumExpr[VarIndex]):
-    # check commutative expressions at base by relabel+sort (only a little messy)
+def check_subexpr_cv(mapped_expr: EinSumExpr[VarIndex]): # check if canonicity violated by relabel+sort (only a little messy)
     first_bound_ind = mapped_expr.rank
     last_bound_ind = highest_index(mapped_expr.all_indices())
     bound_inds = list(range(first_bound_ind, last_bound_ind+1))
-    for perm in permutations(bound_inds):
-        #print(bound_inds, perm)
-        perm = list(perm)
+    for i, perm in enumerate(permutations(bound_inds)):
         if perm != bound_inds:
             imap = lambda i: VarIndex(perm[i.value-first_bound_ind]) if i.value in bound_inds else i
             relabeled_expr = mapped_expr.map_all_indices(imap)
-            if relabeled_expr.eq_canon()[0] < mapped_expr:
-                #print(mapped_expr)
-                return False
-    return True
+            if relabeled_expr.eq_canon()[0].all_indices() < mapped_expr.all_indices():
+                #print(mapped_expr, mapped_expr.all_indices(), perm, bound_inds, i)
+                return False, i
+    return True, -1
+
+def secv_canon(expr: EinSumExpr[VarIndex], start: int=0): # canonicalize wrt relabel+sort if necessary
+    # check commutative expressions at base by relabel+sort (only a little messy)
+    first_bound_ind = expr.rank
+    last_bound_ind = highest_index(expr.all_indices())
+    bound_inds = list(range(first_bound_ind, last_bound_ind+1))
+    best_expr = expr
+    for perm in list(permutations(bound_inds))[start:]:
+        #print(bound_inds, perm)
+        #imap = lambda i: VarIndex(perm[i.value-first_bound_ind]) if (isinstance(i, VarIndex) and i.value in bound_inds) else i
+        imap = lambda i: VarIndex(perm[i.value-first_bound_ind]) if i.value in bound_inds else i
+        relabeled_expr = expr.map_all_indices(imap)
+        relabeled_ec = relabeled_expr.eq_canon()[0]
+        if relabeled_ec.all_indices() < best_expr.all_indices():
+            best_expr = relabeled_ec
+    #print(expr, '->', best_expr)
+    return best_expr
 
 def free_z3_var(prefix: str, *, ctr=count()):
     return z3.Int(f"{prefix}_{next(ctr)}")
