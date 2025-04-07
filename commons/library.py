@@ -672,7 +672,7 @@ class Equation[T, Derivand]:  # can represent equation (expression = 0) OR expre
         # e.g. dx(a_\alpha * b) = d\alpha a_\beta * b + a_\beta * d\alpha b
         first : LibraryTerm = min(coeffs.keys())
         indices = list(first.all_indices())
-        has_omega = any(idx.src.value < 0 for idx in indices)
+        has_omega = any((idx.src is not None and idx.src.value < 0) for idx in indices)
         #print(indices, "has omega?", has_omega)
         
         key_map = {idx.src : idx for idx in indices

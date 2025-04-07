@@ -480,9 +480,10 @@ def sparse_reg_bf(theta, scaler, initializer, residual, model_iterator, threshol
     theta = scaler.scale_theta(theta)
     theta = scaler.select_cols(theta)
     if residual.residual_type in ["matrix_relative", "accuracy"]:
-        residual.set_norm(np.linalg.norm(theta)/np.sqrt(theta.shape[1])) 
+        residual.set_norm(np.linalg.norm(theta)) 
         if verbose:
             print('Residual normalization:', residual.norm)
+
     #print("Scaled theta:", theta)
 
     represent = lambda term: term if term_names is None else term_names[term]

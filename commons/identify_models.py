@@ -114,7 +114,7 @@ def interleave_identify(lib_objects, reg_opts_list, print_opts=None, threshold=1
             #if 'verbose' in reg_opts.keys() and reg_opts['verbose']:
                 #print("Symmetry:", translate_symmetry(library[0].symmetry()))
             print("--- WORKING ON LIBRARY WITH IRREP", irrep, "AT COMPLEXITY", complexity, '---')
-            eqs_i, lbds_i, rrs_i, der_eqns_i, exc_terms_i = identify_equations(lib_object, reg_opts,
+            eqs_i, lbds_i, rrs_i, der_eqns_i, exc_terms_i = identify_equations(lib_object, reg_opts, print_opts=print_opts,
                                                                         threshold=threshold,
                                                                         min_complexity=complexity,
                                                                         max_complexity=complexity,
