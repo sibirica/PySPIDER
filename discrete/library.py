@@ -4,6 +4,7 @@ from operator import add
 from itertools import permutations
 from numpy import prod
 import numpy as np
+from collections import Counter
 
 from commons.z3base import *
 from commons.library import *
@@ -47,20 +48,27 @@ class CoarseGrainedProduct[T](EinSumExpr):
         sign = prod([pair[1] for pair in ecs], initial=1)
         return CoarseGrainedProduct(observables=tuple(sorted([pair[0] for pair in ecs]))), sign
 
-def generate_terms_to(order: int,
-                      observables: List[Observable],
-                      max_rank: int = 2,
-                      max_observables: int = 999,
-                      max_rho: int = 999) -> List[Union[ConstantTerm, LibraryTerm]]:
+def generate_terms_to(order: int, observables: List[Observable],
+                      max_rank: int = 2, max_observables: int = 999, max_rho: int = 999,
+                      max_dt: int = 999, max_dx: int = 999,
+                      max_observable_counts: dict[Observable, int] = None) -> List[Union[ConstantTerm, LibraryTerm]]:
     """
     Given a list of Observable objects and a complexity order, returns the list of all LibraryTerms with complexity up to order and rank up to max_rank using at most max_observables copies of the observables.
 
     :param order: Max complexity order that terms will be generated to.
     :param observables: list of Observable objects used to construct the terms.
-    :param max_observables: Maximum number of Observables (and derivatives) in a single term.
+    :param max_rank: maximum rank of a term to construct.
+    :param max_observables: Maximum number of Observables in a single term.
+    :param max_rho: Maximum number of primes (rhos) in a single term.
+    :param max_observable_counts: Maximum count of each Observable in a single term.
+    :param max_dt: Maximum t derivative order in a term.
+    :param max_dx: Maximum x derivative order in a term.
     :return: List of all possible LibraryTerms whose complexity is less than or equal to order, that can be generated
     using the given observables.
     """
+    max_observable_counts = Counter({obs: 999 for obs in observables}) if max_observable_counts is None \
+                            else Counter(max_observable_counts)
+    
     libterms = list()
     n = order  # max number of "blocks" to include
     k = len(observables)
@@ -69,7 +77,7 @@ def generate_terms_to(order: int,
     # generate partitions in bijection to all possible primes
     for part in partition(n - 1, k + 2, weights=weights):  # k observables + 2 derivative dimensions, plus always 1 rho
         # account for complexities > 1
-        if sum(part[:k]) <= max_observables:
+        if sum(part[:k]) <= max_observables and part[-2]<=max_dt and part[-1]<=max_dx:
             partitions.append(part)
 
     def partition_to_prime(partition):
@@ -87,7 +95,7 @@ def generate_terms_to(order: int,
     #    print(pa, pr)
 
     # make all possible lists of primes and convert to terms of each rank, then generate labelings
-    for prime_list in valid_prime_lists(primes, order, max_observables, max_rho):
+    for prime_list in valid_prime_lists(primes, order, max_observables, max_rho, max_observable_counts):
         parity = sum(len(prime.all_indices()) for prime in prime_list) % 2
         for rank in range(parity, max_rank + 1, 2):
             term = LibraryTerm(primes=prime_list, rank=rank)
@@ -100,6 +108,7 @@ def valid_prime_lists(primes: List[LibraryPrime],
                       order: int,
                       max_observables: int,
                       max_rho: int,
+                      max_observable_counts: Counter, 
                       non_empty: bool = False) -> List[Union[ConstantTerm, LibraryTerm]]:
     # starting_ind: int
     """
@@ -112,8 +121,11 @@ def valid_prime_lists(primes: List[LibraryPrime],
     for i, prime in enumerate(primes): # relative_i
         complexity = prime.complexity
         n_observables = len(prime.derivand.observables)
-        if complexity <= order and n_observables <= max_observables and 1 <= max_rho:
+        observable_counts = Counter(prime.derivand.observables)
+        if complexity <= order and n_observables <= max_observables and 1 <= max_rho and observable_counts <= max_observable_counts:
+            max_observable_counts -= observable_counts # temporarily modify the dictionary
             for tail in valid_prime_lists(primes=primes[i:], order=order-complexity,
                                           max_observables=max_observables-n_observables, max_rho=max_rho-1,
-                                          non_empty=True):
+                                          max_observable_counts=max_observable_counts, non_empty=True):
                 yield (prime,) + tail
+            max_observable_counts += observable_counts
