@@ -1,4 +1,4 @@
-# PySPIDER: sparse regression with automated symbolic logic for equivariant modeling of continuous and discrete data
+# PySPIDER: a Python implementation of the SPIDER framework for data-driven equivariant modeling of continuous and discrete systems
 
 ## Dependencies: 
 Python 3.12+
