@@ -20,6 +20,7 @@ findiff - for finite differencing \
 numba-kdtree - for fast coarse-graining of discrete data \
 ffmpeg (optional) - for creating videos of data \
 h5py (optional) - to read HDF5 or MATLAB v7.3 data files \
+\
 note: make sure that the latest version of scipy is installed (>=1.6)
 
 ## Organization
