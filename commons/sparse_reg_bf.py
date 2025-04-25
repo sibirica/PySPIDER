@@ -1,10 +1,11 @@
 import numpy as np
-from commons.TInvPower import TInvPower
-from commons.sr_utils import *
 from itertools import combinations
 import copy
 
 import random # for test-train sampling
+
+from commons.TInvPower import TInvPower
+from commons.sr_utils import *
 
 # new approach: for modularity, pass objects handling separate steps of the regression with their own params
 
@@ -378,7 +379,7 @@ class Residual(object): # residual computation
     # residual_type "absolute" is always 1
     # residual_type "fixed_column" is computed based on a fixed column of theta
     # residual_type "matrix_relative" is relative to norm of theta[:, sub_inds] after preprocessing
-    # residual_type "accuracy" uses "matrix_relative" for regression and then theta[:, support] for reporting
+    # residual_type "hybrid" uses "matrix_relative" for regression and then theta[:, support] for reporting
     # residual_type "dominant_balance" is relative to norm of largest term in initial dominant balance
     def __init__(self, residual_type, anchor_col=None):
         self.residual_type = residual_type
@@ -479,7 +480,7 @@ def sparse_reg_bf(theta, scaler, initializer, residual, model_iterator, threshol
     #print("Initial theta:", theta)
     theta = scaler.scale_theta(theta)
     theta = scaler.select_cols(theta)
-    if residual.residual_type in ["matrix_relative", "accuracy"]:
+    if residual.residual_type in ["matrix_relative", "hybrid"]:
         residual.set_norm(np.linalg.norm(theta)) 
         if verbose:
             print('Residual normalization:', residual.norm)
@@ -512,7 +513,7 @@ def sparse_reg_bf(theta, scaler, initializer, residual, model_iterator, threshol
             print(f'nrm[{represent(term)}]:', nrm[term])
     best_term, lambda1 = np.argmin(nrm), min(nrm)
     lambda1_test = np.linalg.norm(theta_test[:, best_term]) if h_test>0 else None
-    if residual.residual_type in ["matrix_relative", "accuracy", "fixed_column", "absolute"]: # won't work for dominant balance
+    if residual.residual_type in ["matrix_relative", "hybrid", "fixed_column", "absolute"]: # won't work for dominant balance
         lambda1 = lambda1 / residual.norm
         lambda1_test = lambda1_test / residual.norm if h_test>0 else None
 
@@ -623,7 +624,7 @@ def sparse_reg_bf(theta, scaler, initializer, residual, model_iterator, threshol
     xi, lambd = model_iterator.best_state[ind, :], model_iterator.best_lambdas[ind] # use best solutions!
     lambda_test = model_iterator.best_test_lambdas[ind] if h_test>0 else None
 
-    if residual.residual_type == "accuracy": # switch residual from matrix_relative to accuracy for output
+    if residual.residual_type == "hybrid": # switch residual from matrix_relative to hybrid for output
         lambd, lambda1 = lambd*residual.norm, lambda1*residual.norm
         lambda_test, lambda1_test = (lambda_test*residual.norm, lambda1_test*residual.norm) if h_test>0 else (None, None)
         w_inds = np.array(range(w))
@@ -686,19 +687,27 @@ def evaluate_model(theta, model_vector, scaler, residual, verbose=False):
     model_vector, lambd, _ = scaler.postprocess_multi_term(xi=model_vector, lambd=np.linalg.norm(theta @ model_vector)/residual.norm, verbose=verbose)
     return lambd
 
-def compute_accuracy(theta, xi, scaler): # compute the "accuracy" residual for an existing model
+def hybrid_residual(theta, xi, scaler, return_xi=False): # compute the "hybrid" residual for an existing model
     # preprocessing
     theta = scaler.scale_theta(theta)   
-    theta = scaler.select_cols(theta)  
-    xi = scaler.scale_model(xi)
+    theta = scaler.select_cols(theta) 
 
     # find nonzero inds
     w_inds = np.array(range(theta.shape[1]))
+    if xi is None: # allow best choice of xi to be found
+        xi = solve(theta, w_inds)
+        #print(theta, w_inds, xi)
+    else:
+        xi = scaler.scale_model(xi)
     terms = w_inds[xi!=0]
     
     norm = np.linalg.norm(theta[:, terms])
     xi = xi/np.linalg.norm(xi)
-    return np.linalg.norm(theta @ xi)/norm
+    if return_xi:
+        xi, lambd, _ = scaler.postprocess_multi_term(xi, np.linalg.norm(theta @ xi)/norm)
+        return lambd, xi[scaler.sub_inds]
+    else:
+        return np.linalg.norm(theta @ xi)/norm
 
 # taken with minor modifications from Bertsimas & Gurnee, 2023
 def AIC(lambd, k, m, add_correction=True):

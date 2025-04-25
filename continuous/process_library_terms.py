@@ -1,7 +1,6 @@
 from commons.process_library_terms import *
 from continuous.library import *
 
-
 class SRDataset(AbstractDataset):
     #field_dict: dict[tuple[Any], np.ndarray[float]] = None # storage of computed coarse-grained quantities: (prim, dims, domains) -> array
     def make_domains(self, ndomains, domain_size, pad=0):
@@ -32,10 +31,9 @@ class SRDataset(AbstractDataset):
         #print(prime.derivative, dimorders)
         return diff(data_slice, dimorders, self.dxs) if sum(dimorders)>0 else data_slice
     
-    def make_libraries(self, max_complexity=4, max_observables=3):
+    def make_libraries(self, **kwargs):
         self.libs = dict()
-        terms = generate_terms_to(max_complexity, observables=self.observables,
-                                  max_observables=max_observables)
+        terms = generate_terms_to(observables=self.observables, **kwargs)
         for irrep in self.irreps:
             match irrep:
                 case int():
@@ -48,6 +46,9 @@ class SRDataset(AbstractDataset):
                 case SymmetricTraceFree():
                     self.libs[irrep] = LibraryData([term for term in terms if term.rank == irrep.rank 
                                                     and term.symmetry() != -1], irrep)
+                case _:
+                    raise NotImplemented
+
 
     def find_scales(self, names=None):
         # find mean/std deviation of fields in data_dict that are in names

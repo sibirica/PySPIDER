@@ -2,15 +2,15 @@ import warnings
 
 import numpy as np
 import scipy
-from commons.process_library_terms import *
-from convolution import *
-from commons.library import *
-from library import *
 from scipy.stats._stats import gaussian_kernel_estimate
 # uncomment the next line if it isn't broken for you
 from coarse_grain_utils import coarse_grain_time_slices, poly_coarse_grain_time_slices
 
+from commons.process_library_terms import *
+from commons.library import *
 from commons.utils import regex_find
+from discrete.convolution import *
+from discrete.library import *
 
 @dataclass(kw_only=True)
 class SRDataset(AbstractDataset):  # structures all data associated with a given sparse regression dataset
@@ -35,10 +35,9 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
         #self.rho_scale = self.particle_pos.shape[0]/np.prod(self.world_size[:-1]) # mean number density
         #self.cgps = set()
 
-    def make_libraries(self, max_complexity=4, max_observables=3, max_rho=999):
+    def make_libraries(self, **kwargs):
         self.libs = dict()
-        terms = generate_terms_to(max_complexity, observables=self.observables,
-                                  max_observables=max_observables, max_rho=max_rho)
+        terms = generate_terms_to(observables=self.observables, **kwargs)
         for irrep in self.irreps:
             match irrep:
                 case int():
@@ -51,8 +50,8 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
                 case SymmetricTraceFree():
                     self.libs[irrep] = LibraryData([term for term in terms if term.rank == irrep.rank 
                                                     and term.symmetry() != -1], irrep)
-                #case _:
-                #    raise NotImplemented
+                case _:
+                    raise NotImplemented
 
     def make_domains(self, ndomains, domain_size, pad=0):
         self.domains = []

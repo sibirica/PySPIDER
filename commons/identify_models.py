@@ -3,7 +3,7 @@ from timeit import default_timer as timer
 from functools import reduce
 from operator import add
 
-from library import *
+from commons.library import *
 from commons.sparse_reg import *
 from commons.sparse_reg_bf import *
     
@@ -73,8 +73,8 @@ def identify_equations(lib_object, reg_opts, print_opts=None, threshold=1e-5, mi
                 print(f'Identified model: {eq.pstr(**print_opts)} (order {complexity}, train res {res:.2e}, test res {test_res:.2e})')
             if report_accuracy:
                 xi = reg_result.xi
-                accuracy = compute_accuracy(Q, xi, reg_opts['scaler'])
-                print(f'(Accuracy = {accuracy:.2e})')
+                rh = hybrid_residual(Q, xi, reg_opts['scaler'])
+                print(f'(r_h = {rh:.2e})')
             # eliminate terms via infer_equations
             derived_eqns[eq.pstr(**print_opts)] = []
             for new_eq in infer_equations(eq, primes, lib_max_complexity):

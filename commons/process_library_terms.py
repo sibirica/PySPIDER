@@ -3,11 +3,12 @@ from warnings import warn
 
 import numpy as np
 from findiff import FinDiff
-from library import *
-from commons.weight import *
 from functools import reduce
 from operator import mul
 from dataclasses import dataclass, replace
+
+from commons.library import *
+from commons.weight import *
 
 # if we want to use integration domains with different sizes & spacings, it might be
 # better to store that information within this object as well
@@ -80,7 +81,7 @@ class Weight(object): # scalar-valued Legendre polynomial weight function (may r
     __rmul__ = __mul__
 
     def __repr__(self):
-        return f"Weight({self.m}, {self.q}, {self.k}, {self.scale}, {self.dxs})"
+        return f"Weight(m={self.m}, q={self.q}, k={self.k}, coeff={self.scale}, dxs={self.dxs})"
 
     def __hash__(self):
         return hash(self.__repr__)
@@ -343,7 +344,7 @@ class AbstractDataset(object): # template for structure of all data associated w
     def only_rank2_irreps(cls):
         return (Antisymmetric(rank=2), SymmetricTraceFree(rank=2)) 
     
-    def make_libraries(self, max_complexity=4, max_observables=3, max_rho=999): # populate libs
+    def make_libraries(self, **kwargs): # populate libs
         pass
 
     def make_domains(self, ndomains, domain_size, pad=0): # set domain_size/populate domains
