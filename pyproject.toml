@@ -16,6 +16,7 @@ dependencies = [
   "numpy",
   "scipy >= 1.6",
 ]
+packages = ['commons', 'discrete', 'continuous']
 description = "PySPIDER: a Python implementation of the SPIDER framework for data-driven equivariant modeling of continuous and discrete systems"
 readme = "README.md"
 requires-python = ">=3.12"
