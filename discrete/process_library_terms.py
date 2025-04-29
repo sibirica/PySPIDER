@@ -4,7 +4,7 @@ import numpy as np
 import scipy
 from scipy.stats._stats import gaussian_kernel_estimate
 # uncomment the next line if it isn't broken for you
-from coarse_grain_utils import coarse_grain_time_slices, poly_coarse_grain_time_slices
+from discrete.coarse_grain_utils import coarse_grain_time_slices, poly_coarse_grain_time_slices
 
 from commons.process_library_terms import *
 from commons.library import *
