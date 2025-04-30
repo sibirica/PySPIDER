@@ -28,11 +28,11 @@ pip-delete-this-directory.txt
 *.eps
 *.pdf
 *.diff
-PySPIDER_SR/continuous/data
-PySPIDER_SR/discrete/data
-PySPIDER_SR/continuous/NSE2D
-PySPIDER_SR/discrete/viscek
-PySPIDER_SR/discrete/Matt
+src/PySPIDER_SR/continuous/data
+src/PySPIDER_SR/discrete/data
+src/PySPIDER_SR/continuous/NSE2D
+src/PySPIDER_SR/discrete/viscek
+src/PySPIDER_SR/discrete/Matt
 
 # Mac directory settings
 *.DS_Store

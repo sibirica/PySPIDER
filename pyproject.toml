@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "PySPIDER_SR"
-version = "2.0-alpha"
+version = "2.0-beta"
 
 authors = [
-  { name="Daniel Gurevich (sibirica)", email="nerpa12@gmail.com" },
+  { name="Daniel Gurevich", email="nerpa12@gmail.com" },
 ]
 dependencies = [
   "z3-solver",
@@ -16,7 +16,7 @@ dependencies = [
   "numpy",
   "scipy >= 1.6",
 ]
-description = "PySPIDER: a Python implementation of the SPIDER framework for data-driven equivariant modeling of continuous and discrete systems"
+description = "A Python implementation of the SPIDER framework for data-driven equivariant modeling of continuous and discrete systems"
 readme = "README.md"
 requires-python = ">=3.12"
 classifiers = [
@@ -31,4 +31,4 @@ Homepage = "https://github.com/sibirica/PySPIDER"
 Issues = "https://github.com/sibirica/PySPIDER/issues"
 
 [tool.setuptools.packages.find]
-where = ["PySPIDER_SR"]
+where = ["src"]
