@@ -3,7 +3,7 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "PySPIDER-SR"
+name = "PySPIDER_SR"
 version = "2.0"
 
 authors = [
@@ -31,4 +31,4 @@ Homepage = "https://github.com/sibirica/PySPIDER"
 Issues = "https://github.com/sibirica/PySPIDER/issues"
 
 [tool.setuptools.packages.find]
-where = ["PySPIDER-SR"]
+where = ["PySPIDER_SR"]
