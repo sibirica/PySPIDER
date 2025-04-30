@@ -3,7 +3,7 @@
 ## Introduction
 [SPIDER](https://www.cambridge.org/core/journals/journal-of-fluid-mechanics/article/learning-fluid-physics-from-highly-turbulent-data-using-sparse-physicsinformed-discovery-of-empirical-relations-spider/FB279BC082B965AFCCD768FD50ACEB08) (Sparse Physics-Informed Discovery of Empirical Relations) is a framework for using sparse regression to perform data-driven inference of symmetry-equivariant models of spatiotemporally extended physical systems. These take the form of sets of tensor-valued
 - partial differential equations describing continuous systems or
-- partial integro-differential equations describing systems of interacting particles or agents.
+- partial integro-differential equations describing systems of discrete interacting particles or agents.
 
 PySPIDER is a Python implementation that employs techniques from programming language theory to automate library generation, evaluation, and symbolic deduction, allowing the user to quickly obtain a full physically meaningful and quantitatively accurate description of the dataset. 
 
