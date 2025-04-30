@@ -30,9 +30,5 @@ license-files = ["LICEN[CS]E*"]
 Homepage = "https://github.com/sibirica/PySPIDER"
 Issues = "https://github.com/sibirica/PySPIDER/issues"
 
-[options]
-packages =
-    pySPIDER_SR
-    pySPIDER_SR.commons
-    pySPIDER_SR.continuous
-    pySPIDER_SR.discrete
+[tool.setuptools]
+py-modules = [commons, continuous, discrete]
