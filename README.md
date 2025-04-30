@@ -8,7 +8,9 @@
 PySPIDER is a Python implementation that employs techniques from programming language theory to automate library generation, evaluation, and symbolic deduction, allowing the user to quickly obtain a full physically meaningful and quantitatively accurate description of the dataset. 
 
 ## Getting started
-The "tutorials" directory contains demonstrations of how to use PySPIDER to learn models for both [continuous](https://github.com/sibirica/PySPIDER/blob/main/tutorials/01_Continuous.ipynb) and [discrete](https://github.com/sibirica/PySPIDER/blob/main/tutorials/02_Discrete.ipynb) systems.
+The "tutorials" directory contains demonstrations of how to use PySPIDER to learn models for both [continuous](https://github.com/sibirica/PySPIDER/blob/main/tutorials/01_Continuous.ipynb) and [discrete](https://github.com/sibirica/PySPIDER/blob/main/tutorials/02_Discrete.ipynb) systems. 
+
+We're working on making PySPIDER into a PyPI package (PySPIDER-SR) so you can automatically install it and all of the dependencies with pip, but for now, please clone this GitHub.
 
 ## Dependencies: 
 Python version: 3.12+
