@@ -12,7 +12,7 @@ import unicodedata
 import numpy as np
 from numpy import prod
 
-from commons.z3base import *
+from PySPIDER.commons.z3base import *
 
 # list of substitutions to go between plaintext and LaTeX output
 latex_replacements = {'·': '\\cdot', '²': '^2', '³': '^3', '⁴': '^4', '⁵': '^5', '⁶': '^6',

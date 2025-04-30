@@ -3,8 +3,8 @@ import os
 import sys
 import subprocess
 from timeit import default_timer as timer
-from commons.TInvPower import *
-#from commons.Kaczmarz import *
+from PySPIDER.commons.TInvPower import *
+#from PySPIDER.commons.Kaczmarz import *
 
 def sparse_reg(theta, threshold='AIC', brute_force=True, delta=1e-10, epsilon=1e-2, gamma=2,
                verbose=False, n_terms=-1, char_sizes=None, row_norms=None, valid_single=None, avoid=None, subinds=None, anchor_norm=None, method="stepwise", max_k=10, start_k=20, inhomog=False, inhomog_col=None):

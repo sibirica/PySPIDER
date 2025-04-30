@@ -7,8 +7,8 @@ from functools import reduce
 from operator import mul
 from dataclasses import dataclass, replace
 
-from commons.library import *
-from commons.weight import *
+from PySPIDER.commons.library import *
+from PySPIDER.commons.weight import *
 
 # if we want to use integration domains with different sizes & spacings, it might be
 # better to store that information within this object as well

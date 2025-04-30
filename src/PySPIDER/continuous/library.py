@@ -8,8 +8,8 @@ from collections import defaultdict
 
 #from numpy import inf
 
-from commons.z3base import *
-from commons.library import *
+from PySPIDER.commons.z3base import *
+from PySPIDER.commons.library import *
 
 def generate_terms_to(max_complexity: int, observables: Iterable[Observable],
                       max_rank: int = 2, max_observables: int = 999,

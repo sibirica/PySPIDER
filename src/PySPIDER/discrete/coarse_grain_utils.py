@@ -7,7 +7,7 @@ from math import gamma
 @jit(
     signature_or_function="float64[:](float64[:, :], float64[:], float64[:, :], float64)",
     nopython=True,
-    cache=True,
+    cache=False,
     fastmath=False,
     parallel=True,
     nogil=True)

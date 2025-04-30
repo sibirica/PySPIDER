@@ -6,8 +6,8 @@ from numpy import prod
 import numpy as np
 from collections import Counter
 
-from commons.z3base import *
-from commons.library import *
+from PySPIDER.commons.z3base import *
+from PySPIDER.commons.library import *
 
 @dataclass(frozen=True, order=True)
 class CoarseGrainedProduct[T](EinSumExpr):

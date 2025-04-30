@@ -4,8 +4,8 @@ import copy
 
 import random # for test-train sampling
 
-from commons.TInvPower import TInvPower
-from commons.sr_utils import *
+from PySPIDER.commons.TInvPower import TInvPower
+from PySPIDER.commons.sr_utils import *
 
 # new approach: for modularity, pass objects handling separate steps of the regression with their own params
 

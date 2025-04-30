@@ -1,5 +1,5 @@
 import numpy as np
-from commons.sr_utils import *
+from PySPIDER.commons.sr_utils import *
 
 ### forced_col (for inhomogeneous regression) is UNTESTED
 def TInvPower(A, k, x0=None, mu0=None, tol=1e-12, exact=True, fixed_mu=True, max_iter=50, verbose=False, forced_col=None):

@@ -1,5 +1,5 @@
-from commons.process_library_terms import *
-from continuous.library import *
+from PySPIDER.commons.process_library_terms import *
+from PySPIDER.continuous.library import *
 
 class SRDataset(AbstractDataset):
     #field_dict: dict[tuple[Any], np.ndarray[float]] = None # storage of computed coarse-grained quantities: (prim, dims, domains) -> array

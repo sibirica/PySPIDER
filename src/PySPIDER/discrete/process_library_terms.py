@@ -4,13 +4,13 @@ import numpy as np
 import scipy
 from scipy.stats._stats import gaussian_kernel_estimate
 # uncomment the next line if it isn't broken for you
-from discrete.coarse_grain_utils import coarse_grain_time_slices, poly_coarse_grain_time_slices
+from PySPIDER.discrete.coarse_grain_utils import coarse_grain_time_slices, poly_coarse_grain_time_slices
 
-from commons.process_library_terms import *
-from commons.library import *
-from commons.utils import regex_find
-from discrete.convolution import *
-from discrete.library import *
+from PySPIDER.commons.process_library_terms import *
+from PySPIDER.commons.library import *
+from PySPIDER.commons.utils import regex_find
+from PySPIDER.discrete.convolution import *
+from PySPIDER.discrete.library import *
 
 @dataclass(kw_only=True)
 class SRDataset(AbstractDataset):  # structures all data associated with a given sparse regression dataset
@@ -19,9 +19,9 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
     # subsampling factor when computing coarse-graining, i.e. cg_res points per unit length; should generally just
     # be an integer
     cg_res: float
-    cutoff: float # how many std deviations to cut off weight functions at
     deltat: float
     domain_neighbors: dict[[IntegrationDomain, float], int] = None # indices of neighbors of each ID at given time
+    cutoff: float=6 # how many std deviations to cut off Gaussian weight functions at
     rho_scale: float=1 # density rescaling factor
     #field_dict: dict[tuple[Any], np.ndarray[float]] = None # storage of computed coarse-grained quantities: (cgp, dims, domains) -> array
     
