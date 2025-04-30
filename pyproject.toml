@@ -30,5 +30,5 @@ license-files = ["LICEN[CS]E*"]
 Homepage = "https://github.com/sibirica/PySPIDER"
 Issues = "https://github.com/sibirica/PySPIDER/issues"
 
-[tool.setuptools]
-packages = ["PySPIDER-SR", "PySPIDER-SR.commons", "PySPIDER-SR.continuous", "PySPIDER-SR.discrete"]
+[tool.setuptools.packages.find]
+where = ["PySPIDER-SR"]
