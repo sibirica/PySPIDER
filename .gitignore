@@ -44,3 +44,6 @@ src/PySPIDER_SR/discrete/Matt
 # Julia and other outdated scripts
 Julia/Sysimage.so
 archive/
+
+# Virtual environment
+.venv

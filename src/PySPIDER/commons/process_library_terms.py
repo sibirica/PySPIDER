@@ -447,8 +447,8 @@ class AbstractDataset(object): # template for structure of all data associated w
                 print("UNINDEXED TERM:")
                 print(term)
             column = []
-            term_symmetry = term.symmetry()
             if debug:
+                term_symmetry = term.symmetry()
                 print("Symmetry:", term_symmetry)
             wd_dict = defaultdict(int) # group by weight/domain, aggregate by assignment & integration by parts term
             for weight in self.weights:
