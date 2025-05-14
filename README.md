@@ -1,11 +1,15 @@
+<img src="https://github.com/sibirica/PySPIDER/blob/main/PySPIDER_logo.png" width="144" align="right">
+
 # PySPIDER: a Python implementation of the SPIDER framework for data-driven equivariant modeling of continuous and discrete systems
 
 ## Introduction
-[SPIDER](https://www.cambridge.org/core/journals/journal-of-fluid-mechanics/article/learning-fluid-physics-from-highly-turbulent-data-using-sparse-physicsinformed-discovery-of-empirical-relations-spider/FB279BC082B965AFCCD768FD50ACEB08) (Sparse Physics-Informed Discovery of Empirical Relations) is a framework for using sparse regression to perform data-driven inference of symmetry-equivariant models of spatiotemporally extended physical systems. These take the form of sets of tensor-valued
+[SPIDER](https://github.com/sibirica/PySPIDER/blob/main/DG_Dissertation.pdf) (Sparse Physics-Informed Discovery of Empirical Relations) is a framework for using sparse regression to perform data-driven inference of symmetry-equivariant models of spatiotemporally extended physical systems. These take the form of sets of tensor-valued
 - partial differential equations describing continuous systems or
 - partial integro-differential equations describing systems of discrete interacting particles or agents.
 
 PySPIDER is a Python implementation that employs techniques from programming language theory to automate library generation, evaluation, and symbolic deduction, allowing the user to quickly obtain a full physically meaningful and quantitatively accurate description of the dataset. 
+
+Please check out [my dissertation](https://github.com/sibirica/PySPIDER/blob/main/DG_Dissertation.pdf) to learn more!
 
 ## Getting started
 The "tutorials" directory contains demonstrations of how to use PySPIDER to learn models for both [continuous](https://github.com/sibirica/PySPIDER/blob/main/tutorials/01_Continuous.ipynb) and [discrete](https://github.com/sibirica/PySPIDER/blob/main/tutorials/02_Discrete.ipynb) systems. 
