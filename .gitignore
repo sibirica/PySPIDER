@@ -26,7 +26,6 @@ pip-delete-this-directory.txt
 *.txt
 *.csv
 *.eps
-*.pdf
 *.diff
 src/PySPIDER_SR/continuous/data
 src/PySPIDER_SR/discrete/data
