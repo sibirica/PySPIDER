@@ -438,7 +438,7 @@ class Threshold(object):
             jumps = lambdas[1:]/lambdas[:-1]
             biggest_jump = np.argmax(jumps)
             if verbose:
-                print("margins:", margins)
+                print("jumps:", jumps)
                 print("biggest jump:", biggest_jump, "to", biggest_jump+1)
             return biggest_jump+1
         
@@ -676,10 +676,10 @@ def evaluate_model(theta, model_vector, scaler, residual, verbose=False):
             print('Residual normalization:', residual.norm)
     if residual.residual_type == "dominant_balance":
         qc_cols = np.zeros(shape=(w,))
-        for term in model_iterator.terms:
+        for term in range(w):
             qc_cols[term] = np.linalg.norm(theta[:, term]*model_vector[term])
             if verbose:
-                print(f'qc_col[{term}]:', nrm[term])
+                print(f'qc_col[{term}]:', qc_cols[term])
         residual.set_norm(np.max(qc_cols))
         if verbose:
             print('Residual normalization:', residual.norm)

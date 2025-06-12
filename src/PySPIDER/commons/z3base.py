@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 #from functools import lru_cache
-from typing import Any, Protocol, Union, assert_type
+from typing import Any, Protocol, Union, Tuple, List, assert_type
 from abc import abstractmethod, ABC
 from collections import defaultdict, Counter
 from collections.abc import Callable, Iterable

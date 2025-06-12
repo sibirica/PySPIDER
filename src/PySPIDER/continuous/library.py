@@ -13,7 +13,8 @@ from PySPIDER.commons.library import *
 
 def generate_terms_to(max_complexity: int, observables: Iterable[Observable],
                       max_rank: int = 2, max_observables: int = 999,
-                      max_observable_counts: dict[Observable, int] = None, max_dt: int = 999, max_dx: int = 999,
+                      max_observable_counts: dict[Observable, int] = None, 
+                      max_dt: int = 999, max_dx: int = 999, **kwargs,
                       ) -> List[Union[ConstantTerm, LibraryTerm]]:
     """
     Given a list of Observable objects and a complexity order, returns the list of all LibraryTerms with complexity up to max_complexity and rank up to max_rank using at most max_observables copies of the observables.

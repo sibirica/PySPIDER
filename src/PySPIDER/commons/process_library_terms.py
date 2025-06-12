@@ -7,6 +7,8 @@ from functools import reduce
 from operator import mul
 from dataclasses import dataclass, replace
 
+import concurrent.futures
+
 from PySPIDER.commons.library import *
 from PySPIDER.commons.weight import *
 
@@ -33,6 +35,11 @@ class IntegrationDomain(object):
 
     def line_dist(self, coord, dim):
         return max(0, self.min_corner[dim] - coord, coord - self.max_corner[dim])
+    
+    def __eq__(self, other):
+        if not isinstance(other, IntegrationDomain):
+            return NotImplemented
+        return self.min_corner == other.min_corner and self.max_corner == self.max_corner
 
 @dataclass
 class Weight(object): # scalar-valued Legendre polynomial weight function (may rename class to LegendreWeight)
@@ -85,6 +92,11 @@ class Weight(object): # scalar-valued Legendre polynomial weight function (may r
 
     def __hash__(self):
         return hash(self.__repr__)
+    
+    def __eq__(self, other):
+        if not isinstance(other, Weight):
+            return NotImplemented
+        return (self.m == other.m and self.q == other.q and self.k == other.k and tuple(self.dxs) == tuple(other.dxs) and self.scale == other.scale)
 
 @dataclass
 class GeneralizedWeight(object): # scalar-valued weight function for g(x)*Weight - not currently in use
@@ -92,7 +104,7 @@ class GeneralizedWeight(object): # scalar-valued weight function for g(x)*Weight
     g_fun: Callable[[Iterable[float]], float]
     
     def __repr__(self):
-        return f"GeneralizedWeight({self.base_weight}, {g_fun.__name__})"
+        return f"GeneralizedWeight({self.base_weight}, {self.g_fun.__name__})"
 
 @dataclass(kw_only=True)
 class Metric(object):
@@ -146,6 +158,11 @@ class TensorWeight: # tensor-valued weight function
 
     def __hash__(self):
         return hash(repr(self))
+    
+    def __eq__(self, other):
+        if not isinstance(other, TensorWeight):
+            return NotImplemented
+        return (self.weight_dict == other.weight_dict and self.rank == other.rank and self.n_spatial_dim == other.n_spatial_dim)
 
     __rmul__ = __mul__
 
@@ -173,6 +190,17 @@ class FactoredTensorWeight(TensorWeight):
 
     def __hash__(self):
         return hash(repr(self))
+    
+    def __eq__(self, other):
+        if not isinstance(other, FactoredTensorWeight):
+            return NotImplemented
+        if not super().__eq__(other):
+            return False
+        if not (self.base_weight == other.base_weight):
+            return False
+        if not np.array_equal(self.tensor, other.tensor):
+            return False
+        return True
 
 @dataclass
 class TensorWeightBasis: # basis of TensorWeights to span desired space
@@ -292,6 +320,31 @@ class LibraryData(object):  # structures information associated with a given ran
     def clear_results(self): # create a copy of self without results computed
         return replace(self, Q=None, col_weights=None, row_weights=None)
 
+#function for initializing global variables for each parallel worker process
+def init_domain_worker(dataset_init, current_irrep_init, by_parts_init, debug_init):
+    global worker_dataset, worker_current_irrep, worker_by_parts, worker_debug
+    worker_dataset = dataset_init
+    worker_current_irrep = current_irrep_init
+    worker_by_parts = by_parts_init
+    worker_debug = debug_init
+
+#function to be executed in parallel to evaluate all terms for a given domain
+def parallel_domain_task(domain):
+    dataset = worker_dataset
+    irrep = worker_current_irrep
+    by_parts = worker_by_parts
+    debug = worker_debug
+
+    domain_results_dict = defaultdict(float)
+
+    for t, w, term, tensor_weight in dataset.integrated_terms_tuples:
+        if w.scale == 0:
+            continue
+        value = dataset.eval_on_domain(t,w,domain,debug=debug)
+        key = term, tensor_weight
+        domain_results_dict[key] += value
+    return domain, domain_results_dict
+
 @dataclass(kw_only=True)
 class AbstractDataset(object): # template for structure of all data associated with a given sparse regression dataset
     world_size: List[float] # linear dimensions of dataset in physical units (spatial + time)
@@ -318,6 +371,8 @@ class AbstractDataset(object): # template for structure of all data associated w
 
     metric: Metric = None # we support only constant coeff metrics for now
     metric_is_identity: bool = True
+
+    integrated_terms_tuples: List[Tuple[LibraryTerm,Weight,LibraryTerm,TensorWeight]] = None
 
     def __post_init__(self):
         self.n_dimensions = len(self.world_size) # number of dimensions (spatial + temporal)
@@ -462,6 +517,8 @@ class AbstractDataset(object): # template for structure of all data associated w
                             print("Indexed term:", indexed_term)
                             print("Scalar weight:", scalar_weight)
                         for t, w in int_by_parts(indexed_term, scalar_weight, by_parts):
+                            if w.scale == 0:
+                                continue
                             if debug:
                                 print("INT BY PARTS:", indexed_term, "->")
                                 print("Integrated term:", t)
@@ -484,12 +541,63 @@ class AbstractDataset(object): # template for structure of all data associated w
                         column.append(wd_dict[tensor_weight, domain])
             cols_list.append(column)
         return np.array(cols_list).transpose() # convert to numpy array
+    
+    def make_Q_parallel(self, irrep, by_parts=True, debug=False, num_processors=None):
         
-    def make_library_matrices(self, by_parts=True, debug=False): # compute LibraryData Q matrices
+        init_args = (self, irrep, by_parts, debug)
+        domains = self.domains
+        all_results = []
+
+        #precompute symbolic manipulations for parallel tasks
+        self.integrated_terms_tuples = []
+        for term in list(self.libs[irrep].terms):
+            for weight in list(self.weights):
+                for tensor_weight in self.tensor_weight_basis[(irrep, weight)].tw_list:
+                    for indexed_term, scalar_weight in self.get_index_assignments(term,tensor_weight):
+                        for t, w in int_by_parts(indexed_term, scalar_weight, by_parts):
+                            self.integrated_terms_tuples.append((t,w,term,tensor_weight))
+
+        #begin parallel task execution
+        with concurrent.futures.ProcessPoolExecutor(max_workers=num_processors, initializer=init_domain_worker, initargs=init_args) as executor:
+            results = executor.map(parallel_domain_task, domains)
+            for result in results:
+                all_results.append(result)
+                  
+        terms = list(self.libs[irrep].terms)
+        weights = list(self.weights)
+        num_cols = len(terms)
+        term_to_col_idx = {term: i for i, term in enumerate(terms)}
+        row_map = {}
+        current_row_idx = 0
+        for weight in weights:
+            for tensor_weight in self.tensor_weight_basis[(irrep, weight)].tw_list:
+                for domain in domains:
+                    row_key = (tensor_weight, domain)
+                    if row_key not in row_map:
+                        row_map[row_key] = current_row_idx
+                        current_row_idx += 1
+        num_rows = current_row_idx
+
+        Q_matrix = np.zeros((num_rows, num_cols), dtype=np.float64)
+
+        for domain, domain_results in all_results:
+            for (term, tensor_weight), result in domain_results.items():
+                col_idx = term_to_col_idx[term]
+                row_idx = row_map[(tensor_weight, domain)]
+
+                Q_matrix[row_idx, col_idx] = result
+
+        return Q_matrix
+
+        
+    def make_library_matrices(self, by_parts=True, debug=False, parallel=False, num_processors=None): # compute LibraryData Q matrices
         for irrep in self.irreps:
             if debug:
                 print(f"***RANK {irrep} LIBRARY***")
-            self.libs[irrep].Q = self.make_Q(irrep, by_parts, debug)
+            if parallel:
+                self.libs[irrep].Q = self.make_Q_parallel(irrep, by_parts, debug, num_processors)
+            else:
+                self.libs[irrep].Q = self.make_Q(irrep, by_parts, debug)
         self.find_scales()
         for irrep in self.irreps:
             self.libs[irrep].col_weights = [self.get_char_size(term) for term in self.libs[irrep].terms]
