@@ -76,7 +76,8 @@ def identify_equations(lib_object, reg_opts, print_opts=None, threshold=1e-5, mi
                 rh = hybrid_residual(Q, xi, reg_opts['scaler'])
                 print(f'(r_h = {rh:.2e})')
             # eliminate terms via infer_equations
-            derived_eqns[eq.pstr(**print_opts)] = []
+            eq_str = eq.pstr(**print_opts)
+            derived_eqns[eq_str] = []
             for new_eq in infer_equations(eq, primes, lib_max_complexity):
                 #print("NEW_EQ:", new_eq)
                 lhs, rhs = new_eq.eliminate_complex_term()
@@ -88,7 +89,7 @@ def identify_equations(lib_object, reg_opts, print_opts=None, threshold=1e-5, mi
                 #    print(f"{lhs} =? {t}:", lhs==t)
                 #if 'verbose' in reg_opts.keys() and reg_opts['verbose']:
                 #    print("All excluded terms so far:", excluded_terms_copy)
-                derived_eqns[eq.pstr(**print_opts)].append(new_eq)
+                derived_eqns[eq_str].append(new_eq)
             #print("All excluded terms so far:", excluded_terms_copy)
     return equations, lambdas, reg_results, derived_eqns, excluded_terms_copy
 

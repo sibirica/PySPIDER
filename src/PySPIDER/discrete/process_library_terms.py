@@ -20,6 +20,7 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
     # be an integer
     cg_res: float
     deltat: float
+    # not sure what the type-hinting was supposed to be here
     domain_neighbors: dict[[IntegrationDomain, float], int] = None # indices of neighbors of each ID at given time
     cutoff: float=6 # how many std deviations to cut off Gaussian weight functions at
     rho_scale: float=1 # density rescaling factor

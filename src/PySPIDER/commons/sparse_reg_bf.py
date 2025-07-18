@@ -409,7 +409,7 @@ class Threshold(object):
     
     def select_model(self, lambdas, theta, lambda1, verbose):
         if self.n_terms is not None:
-            return min(theta.shape[1], self.n_terms-1)
+            return min(theta.shape[1]-1, self.n_terms-1)
         if self.type == 'jump': # check when lambda>delta and jump in lambda>gamma
             jumps = lambdas[:-1]/lambdas[1:]
             i = len(lambdas)-1
@@ -702,6 +702,7 @@ def hybrid_residual(theta, xi, scaler, return_xi=False): # compute the "hybrid" 
     terms = w_inds[xi!=0]
     
     norm = np.linalg.norm(theta[:, terms])
+    norm = 1 if norm==0 else norm
     xi = xi/np.linalg.norm(xi)
     if return_xi:
         xi, lambd, _ = scaler.postprocess_multi_term(xi, np.linalg.norm(theta @ xi)/norm)

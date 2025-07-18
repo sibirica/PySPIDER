@@ -543,7 +543,6 @@ class AbstractDataset(object): # template for structure of all data associated w
         return np.array(cols_list).transpose() # convert to numpy array
     
     def make_Q_parallel(self, irrep, by_parts=True, debug=False, num_processors=None):
-        
         init_args = (self, irrep, by_parts, debug)
         domains = self.domains
         all_results = []
