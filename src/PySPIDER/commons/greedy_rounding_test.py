@@ -142,6 +142,10 @@ def greedy_rounding(Sigma: np.ndarray, k: int, max_cuts: int = 5, cut_type: str 
     model = gp.Model("SparsePCA_SOCP_With_Cuts")
     model.setParam("OutputFlag", 1 if verbose else 0) # Control Gurobi console output
 
+    # set Gurobi parameters in hope it helps with numerical stability and not taking forever
+    model.setParam("TimeLimit", 1000)
+    model.setParam("NumericFocus", 3)
+
     # --- Phase 1: Initial SOCP Model Setup (including existing constraints 1-8) ---
     # This part sets up the convex relaxation, which is the starting point for the cutting-plane method [7, 9, 11, 12].
 
