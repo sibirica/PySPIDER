@@ -4,30 +4,101 @@ import gurobipy as gp
 import numpy as np
 from typing import Tuple, List
 
-def get_eigenvector_for_cut(X_solution: np.ndarray) -> np.ndarray:
+def compute_warm_start_values(Sigma: np.ndarray, k: int) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Compute warm start values for X and z variables using the eigenvector 
+    corresponding to the smallest eigenvalue of Sigma, thresholded to top k values.
+    
+    Args:
+        Sigma (np.ndarray): The covariance matrix
+        k (int): Target sparsity level
+        
+    Returns:
+        Tuple[np.ndarray, np.ndarray]: X_warm (w x w matrix) and z_warm (w vector)
+    """
+    w = Sigma.shape[0]
+    
+    # Get the eigenvector corresponding to the smallest eigenvalue
+    eigenvalues, eigenvectors = np.linalg.eigh(Sigma)
+    smallest_eig_idx = 0  # eigenvalues are sorted in ascending order
+    x_vec = eigenvectors[:, smallest_eig_idx]
+    
+    # Threshold to keep only the top k absolute values
+    abs_x = np.abs(x_vec)
+    if k > 0:
+        top_k_indices = np.argsort(abs_x)[-k:]
+        # Create sparse vector with only top k components
+        x_sparse = np.zeros(w)
+        x_sparse[top_k_indices] = x_vec[top_k_indices]
+        
+        # Normalize the sparse vector
+        norm_x_sparse = np.linalg.norm(x_sparse)
+        if norm_x_sparse > 1e-12:
+            x_sparse = x_sparse / norm_x_sparse
+        
+        # Set z variables to indicate selected support
+        z_warm = np.zeros(w)
+        z_warm[top_k_indices] = 1.0
+    else:
+        x_sparse = np.zeros(w)
+        z_warm = np.zeros(w)
+    
+    # Construct X = xx^T from the thresholded sparse vector
+    X_warm = np.outer(x_sparse, x_sparse)
+    
+    return X_warm, z_warm
+
+def apply_warm_start_to_model(model: gp.Model, X_vars: gp.MVar, z_vars: gp.MVar, abs_X_vars: gp.MVar, 
+                            X_warm: np.ndarray, z_warm: np.ndarray):
+    """
+    Apply warm start values to Gurobi model variables.
+    
+    Args:
+        model: Gurobi model
+        X_vars: X matrix variables
+        z_vars: z vector variables  
+        abs_X_vars: absolute value of X variables
+        X_warm: warm start values for X
+        z_warm: warm start values for z
+    """
+    w = X_warm.shape[0]
+    
+    # Set warm start values for X variables
+    for i in range(w):
+        for j in range(w):
+            X_vars[i, j].start = X_warm[i, j]
+            abs_X_vars[i, j].start = abs(X_warm[i, j])
+    
+    # Set warm start values for z variables
+    for i in range(w):
+        z_vars[i].start = z_warm[i]
+
+def get_eigenvectors_for_cuts(X_solution: np.ndarray) -> np.ndarray:
     """
     Identifies if the given matrix X_solution violates the Positive Semidefinite (PSD)
-    property and, if so, returns an eigenvector to construct a cutting plane.
+    property and, if so, returns ALL eigenvectors corresponding to negative eigenvalues.
     This simulates the 'separation oracle' [8, 14-17].
 
     Args:
         X_solution (np.ndarray): The current solution matrix X from the Gurobi model.
 
     Returns:
-        np.ndarray or None: The eigenvector corresponding to the most negative eigenvalue
-                            if a violation is found, otherwise None.
+        np.ndarray or None: Matrix where each column is an eigenvector corresponding to a 
+                            negative eigenvalue, or None if matrix is approximately PSD.
     """
     eigenvalues, eigenvectors = np.linalg.eigh(X_solution)
-    min_eig = eigenvalues # Eigenvalues are sorted in ascending order
-
-    # Use a small tolerance for floating-point comparisons
-    if min_eig < -1e-6:
-        # Return the eigenvector corresponding to the most negative eigenvalue [14, 15, 17]
-        return eigenvectors[:, 0]
+    
+    # Find all negative eigenvalues (use tolerance for floating-point comparisons)
+    negative_indices = eigenvalues < -1e-8
+    
+    if np.any(negative_indices):
+        # Return all eigenvectors corresponding to negative eigenvalues
+        # Each column is an eigenvector for a negative eigenvalue
+        return eigenvectors[:, negative_indices]
     else:
         return None # Matrix is approximately PSD
 
-def greedy_rounding(Sigma: np.ndarray, k: int, max_cuts: int = 5, cut_type: str = "trailing_eigenvalue") -> Tuple[np.ndarray, float]:
+def greedy_rounding(Sigma: np.ndarray, k: int, max_cuts: int = 5, cut_type: str = "trailing_eigenvalue", verbose: bool = False, warm_start: bool = True) -> Tuple[np.ndarray, float, dict]:
     """
     Implements the greedy rounding method, augmented with an iterative cutting-plane
     scheme to enforce Positive Semidefiniteness (PSD) more strictly.
@@ -41,24 +112,35 @@ def greedy_rounding(Sigma: np.ndarray, k: int, max_cuts: int = 5, cut_type: str 
         k (int): The target sparsity level.
         max_cuts (int): Maximum number of cutting planes to add.
         cut_type (str): Type of cutting plane to generate ('trailing_eigenvalue' or 'nuclear_norm').
+        verbose (bool): If True, display Gurobi solver output and additional information.
+        warm_start (bool): If True, initialize variables using smallest eigenvector of Sigma.
 
     Returns:
-        Tuple[np.ndarray, float]: A tuple containing the identified sparse coefficient vector
-                                  and its Frobenius relative residual.
+        Tuple[np.ndarray, float, dict]: A tuple containing:
+            - The identified sparse coefficient vector
+            - Its Frobenius relative residual
+            - A dictionary with cutting plane information: 
+              {'cuts_added': int, 'final_violation': float, 'violation_type': str, 'converged': bool}
 
     Raises:
         ValueError: If k is out of bounds or cut_type is unsupported.
         RuntimeError: If Gurobi optimization fails.
     """
-    w = Sigma.shape
+    w = Sigma.shape[1]
 
     if not (0 <= k <= w):
         raise ValueError(f"Sparsity k must be between 0 and w. Got k={k}, w={w}.")
     if w == 0 or k == 0:
-        return np.zeros(w), 0.0
+        return np.zeros(w), 0.0, {
+            'cuts_added': 0, 
+            'final_violation': 0.0, 
+            'violation_type': "none", 
+            'converged': True,
+            'cut_violations': []
+        }
 
     model = gp.Model("SparsePCA_SOCP_With_Cuts")
-    model.setParam("OutputFlag", 0) # Suppress Gurobi console output
+    model.setParam("OutputFlag", 1 if verbose else 0) # Control Gurobi console output
 
     # --- Phase 1: Initial SOCP Model Setup (including existing constraints 1-8) ---
     # This part sets up the convex relaxation, which is the starting point for the cutting-plane method [7, 9, 11, 12].
@@ -91,68 +173,148 @@ def greedy_rounding(Sigma: np.ndarray, k: int, max_cuts: int = 5, cut_type: str 
     model.addConstr(gp.quicksum(abs_X_vars[i,j] for i in range(w) for j in range(w)) <= k, name="total_abs_X_sum")
 
     # 7. Positive Semidefinite Relaxation (2x2 Principal Minors): X_ij^2 <= X_ii * X_jj [7].
-    # Gurobi's quadratic constraint capabilities handle these, ensuring convexity.
+    # This is a rotated second-order cone constraint recognized by Gurobi when X_ii, X_jj >= 0
     for i in range(w):
         model.addConstr(X_vars[i,i] >= 0, name=f"X_diag_nonneg_{i}") # Diagonal elements must be non-negative
         for j in range(i + 1, w): # Iterate only over upper triangle for unique pairs
-            model.addQConstr(X_vars[i,j]*X_vars[i,j] <= X_vars[i,i]*X_vars[j,j], name=f"PSD_2x2_minor_{i}_{j}")
+            # For PSD constraint X_ij^2 <= X_ii * X_jj (rotated SOC constraint)
+            # Use addConstr instead of addQConstr for this specific convex quadratic form
+            model.addConstr(X_vars[i,j] * X_vars[i,j] <= X_vars[i,i] * X_vars[j,j], 
+                          name=f"PSD_2x2_minor_{i}_{j}")
 
     # 8. Additional PSD-derived constraint for z_i: sum_{j=1}^{w} X_ij^2 <= z_i * X_ii [10].
     # This constraint further links X and z, critical for the relaxation.
     for i in range(w):
-        model.addQConstr(gp.quicksum(X_vars[i,j]*X_vars[i,j] for j in range(w)) <= z_vars[i]*X_vars[i,i], name=f"X_sq_sum_bound_z_{i}")
+        # Use addConstr for the quadratic constraint: sum_{j=1}^{w} X_ij^2 <= z_i * X_ii
+        model.addConstr(gp.quicksum(X_vars[i,j] * X_vars[i,j] for j in range(w)) <= z_vars[i] * X_vars[i,i], 
+                       name=f"X_sq_sum_bound_z_{i}")
+
+    # --- Apply Warm Start ---
+    # Initialize variables using the smallest eigenvector of Sigma to provide a good starting point
+    if warm_start:
+        X_warm, z_warm = compute_warm_start_values(Sigma, k)
+        apply_warm_start_to_model(model, X_vars, z_vars, abs_X_vars, X_warm, z_warm)
+        if verbose:
+            print(f"Applied warm start using smallest eigenvector of Sigma")
 
     # --- Iterative Cutting Plane Addition ---
     # This loop dynamically adds linear cutting planes to the model [9, 11].
     # These cuts tighten the outer approximation of the PSD cone.
 
+    final_violation = 0.0
+    violation_type = ""
+    converged = False
+    cut_violations = []  # Track violation for each cut
+
     for cut_iter in range(max_cuts):
         model.optimize()
 
         if model.status not in (gp.GRB.OPTIMAL, gp.GRB.SUBOPTIMAL):
-            print(f"Gurobi failed to find optimal/suboptimal solution at iteration {cut_iter}. Status: {model.status}")
             break
 
         X_solution = X_vars.X.reshape((w, w)) # Retrieve the current X solution
 
         if cut_type == "trailing_eigenvalue":
-            v_cut = get_eigenvector_for_cut(X_solution)
-            if v_cut is None:
-                print(f"X is approximately positive semidefinite after {cut_iter} cuts (tolerance). Stopping iterative cutting.")
+            v_cuts = get_eigenvectors_for_cuts(X_solution)
+            if v_cuts is None:
+                converged = True
                 break # Solution satisfies PSD property within tolerance
 
-            # Add a trailing eigenvalue cut: ⟨X, v v^T⟩ >= 0 [13-15, 17].
-            # This is a linear constraint in terms of X_ij variables.
-            vvT_matrix = np.outer(v_cut, v_cut)
-            model.addConstr(gp.quicksum(X_vars[i,j] * vvT_matrix[i,j] for i in range(w) for j in range(w)) >= 0,
-                            name=f"trailing_eig_cut_{cut_iter}")
-            print(f"Added trailing eigenvalue cut {cut_iter+1}.")
+            # Calculate the violation size (most negative eigenvalue)
+            eigenvalues = np.linalg.eigh(X_solution)[0]
+            min_eigenvalue = eigenvalues[0]
+            final_violation = abs(min_eigenvalue)
+            violation_type = "eigenvalue"
+            cut_violations.append(final_violation)
 
-        elif cut_type == "nuclear_norm":
+            # Add trailing eigenvalue cuts: ⟨X, v_i v_i^T⟩ >= 0 for each negative eigenvector v_i [13-15, 17].
+            # This is a linear constraint in terms of X_ij variables.
+            num_negative_eigs = v_cuts.shape[1]
+            for eig_idx in range(num_negative_eigs):
+                v_cut = v_cuts[:, eig_idx]  # Extract each eigenvector
+                vvT_matrix = np.outer(v_cut, v_cut)
+                model.addConstr(gp.quicksum(X_vars[i,j] * vvT_matrix[i,j] for i in range(w) for j in range(w)) >= 0,
+                              name=f"trailing_eig_cut_{cut_iter}_{eig_idx}")
+            
+            print(f"Added {num_negative_eigs} eigenvalue cuts for iteration {cut_iter}")
+            
+            # Reapply warm start after adding cuts (problem structure has changed)
+            if warm_start:
+                X_warm, z_warm = compute_warm_start_values(Sigma, k)
+                apply_warm_start_to_model(model, X_vars, z_vars, abs_X_vars, X_warm, z_warm)
+                if verbose:
+                    print(f"Reapplied warm start after adding cuts")
+
+        elif cut_type == "nuclear_norm": 
+            # WARNING: there are potentially some numerical conditioning issues here...
             # For nuclear norm cuts, we check if ‖X‖∗ > tr(X) [19].
             # The nuclear norm (sum of singular values) of a symmetric matrix X [21].
-            singular_values = np.linalg.svd(X_solution)[1] # U, s, Vt where s are singular values
+            U, singular_values, Vt = np.linalg.svd(X_solution) # Full SVD decomposition
             nuclear_norm_X = np.sum(singular_values) # ‖X‖∗ [19]
             trace_X = np.trace(X_solution) # tr(X) [19]
+            if nuclear_norm_X > trace_X + 1e-10: # Check for violation with tolerance
+                # Calculate the violation size
+                final_violation = nuclear_norm_X - trace_X
+                violation_type = "nuclear_norm"
+                cut_violations.append(final_violation)
 
-            if nuclear_norm_X > trace_X + 1e-6: # Check for violation with tolerance
-                # Proposition 7 states that an optimal Y* for the cut is UU^T where X = UΛU^T [16].
-                # For symmetric X, U from SVD will contain eigenvectors if singular values match eigenvalues.
-                # If X has negative eigenvalues, we need the U from spectral decomposition.
-                eigenvalues_X, eigenvectors_X = np.linalg.eigh(X_solution)
-                # Y_cut for the nuclear norm cut is given by U U^T, where U contains the eigenvectors of X [16].
-                Y_cut_matrix = eigenvectors_X @ eigenvectors_X.T # This is U U^T
-
+                # Proposition 7 states that an optimal Y* for the cut is UU^T where X = UΣV^T from SVD [16].
+                # For nuclear norm cuts, we need U from the SVD decomposition, not eigendecomposition
+                Y_cut_matrix = U @ Vt # This is U U^T where U comes from SVD
                 # Add the nuclear norm cut: ⟨X, Y_cut⟩ <= tr(X) [13, 19]
                 model.addConstr(gp.quicksum(X_vars[i,j] * Y_cut_matrix[i,j] for i in range(w) for j in range(w)) <= gp.quicksum(X_vars[i,i] for i in range(w)),
                                 name=f"nuclear_norm_cut_{cut_iter}")
-                print(f"Added nuclear norm cut {cut_iter+1}.")
+                
+                # Reapply warm start after adding cuts (problem structure has changed)  
+                if warm_start:
+                    X_warm, z_warm = compute_warm_start_values(Sigma, k)
+                    apply_warm_start_to_model(model, X_vars, z_vars, abs_X_vars, X_warm, z_warm)
+                    if verbose:
+                        print(f"Reapplied warm start after adding nuclear norm cut")
             else:
-                print(f"Nuclear norm condition satisfied after {cut_iter} cuts (tolerance). Stopping iterative cutting.")
+                final_violation = max(0, nuclear_norm_X - trace_X)
+                violation_type = "nuclear_norm"
+                converged = True
                 break
         else:
             raise ValueError("Unsupported cut type. Choose 'trailing_eigenvalue' or 'nuclear_norm'.")
 
+    # Determine the actual number of cuts added
+    cuts_added = cut_iter + 1 if not converged else cut_iter
+
+    # If we reached max_cuts without converging, calculate final violation
+    if not converged and cuts_added > 0:
+        # Re-optimize to get the final solution
+        model.optimize()
+        if model.status in (gp.GRB.OPTIMAL, gp.GRB.SUBOPTIMAL):
+            X_solution = X_vars.X.reshape((w, w))
+            if cut_type == "trailing_eigenvalue":
+                eigenvalues = np.linalg.eigh(X_solution)[0]
+                final_violation = abs(eigenvalues[0]) if eigenvalues[0] < 0 else 0.0
+                violation_type = "eigenvalue"
+            elif cut_type == "nuclear_norm":
+                singular_values = np.linalg.svd(X_solution)[1]
+                nuclear_norm_X = np.sum(singular_values)
+                trace_X = np.trace(X_solution)
+                final_violation = max(0, nuclear_norm_X - trace_X)
+                violation_type = "nuclear_norm"
+
+    # Check final violation even if no cuts were added
+    if cuts_added == 0:
+        model.optimize()
+        if model.status in (gp.GRB.OPTIMAL, gp.GRB.SUBOPTIMAL):
+            X_solution = X_vars.X.reshape((w, w))
+            if cut_type == "trailing_eigenvalue":
+                eigenvalues = np.linalg.eigh(X_solution)[0]
+                final_violation = abs(eigenvalues[0]) if eigenvalues[0] < 0 else 0.0
+                violation_type = "eigenvalue"
+            elif cut_type == "nuclear_norm":
+                singular_values = np.linalg.svd(X_solution)[1]
+                nuclear_norm_X = np.sum(singular_values)
+                trace_X = np.trace(X_solution)
+                final_violation = max(0, nuclear_norm_X - trace_X)
+                violation_type = "nuclear_norm"
+    
     # --- Phase 2: Greedy Rounding and Fixed-Support Eigenvector Problem ---
     # This phase uses the (potentially refined) continuous z_solution from Gurobi
     # to identify the 'k' most relevant terms and then solves a simpler, unconstrained
@@ -172,78 +334,176 @@ def greedy_rounding(Sigma: np.ndarray, k: int, max_cuts: int = 5, cut_type: str 
         c_S = eigenvectors[:, smallest_eigenvalue_idx]
         c_full[top_k_indices] = c_S
         norm_c_full = np.linalg.norm(c_full)
-        c_final = c_full / norm_c_full if norm_c_full > 1e-10 else np.zeros(w)
+        c_final = c_full / norm_c_full #if norm_c_full > 1e-10 else np.zeros(w)
     else:
         c_final = np.zeros(w)
 
     # Calculate the Frobenius relative residual [27-29]
     numerator_sq = c_final.T @ Sigma @ c_final
-    numerator = np.sqrt(max(0, numerator_sq))
-    denominator = np.sqrt(np.trace(Sigma))
-    frobenius_residual = 0.0
-    if denominator > 1e-10:
-        frobenius_residual = numerator / denominator
+    
+    # Handle potential numerical precision issues
+    if numerator_sq < 0:
+        raise ValueError(f"numerator_sq = c_final.T @ Sigma @ c_final = {numerator_sq:.6e} is negative. " +
+                         f"This indicates Sigma is not positive semidefinite or there's a computational error.")
+    
+    numerator = np.sqrt(numerator_sq)
+    denominator = np.sqrt(np.trace(Sigma)) # note this is equal to Frobenius norm of G
+    frobenius_residual = numerator / denominator
 
-    return c_final, frobenius_residual
+    return c_final, frobenius_residual, {
+        'cuts_added': cuts_added, 
+        'final_violation': final_violation, 
+        'violation_type': violation_type, 
+        'converged': converged,
+        'cut_violations': cut_violations
+    }
 
 # --- Example Usage ---
 if __name__ == "__main__":
-    w_demo = 50
-    k_demo = 5
-    np.random.seed(42)
-    true_indices = np.random.choice(w_demo, k_demo, replace=False)
-    true_c = np.zeros(w_demo)
-    true_c[true_indices] = np.random.rand(k_demo) * 10
-    true_c /= np.linalg.norm(true_c)
+    w_demo = 30
+    k_demo = 10
+    m_demo = 150  # Number of measurements (rows in G matrix)
+    max_cuts_demo = 20
 
-    Sigma_demo = np.identity(w_demo) * 100.0
-    for i in true_indices:
+    support_noise_level = 1e-6     # The interpretation of these parameters is questionable
+    global_noise_level = 1     # Seriously Claude, what are you doing?
+    min_eig_threshold = 1e-10       # Looser threshold for rank-deficient matrices 
+    regularization_amount = 1e-8   # Stronger regularization for numerical stability  
+    
+    np.random.seed(42)
+    true_indices = np.sort(np.random.choice(w_demo, k_demo, replace=False))
+    true_c = np.zeros(w_demo)
+    
+    # Generate coefficients ensuring none are smaller than 0.01
+    min_coeff_value = 1/(5*np.sqrt(k_demo))
+    max_attempts = 20
+    
+    for attempt in range(max_attempts):
+        # Generate random coefficients and normalize
+        coeffs = np.random.rand(k_demo)
+        coeffs /= np.linalg.norm(coeffs)
+        
+        # Check if all coefficients meet the minimum threshold
+        if np.all(np.abs(coeffs) >= min_coeff_value):
+            true_c[true_indices] = coeffs
+            break
+        
+        # If we don't meet the threshold, try scaling up the smallest coefficients
+        # while maintaining unit norm
+        scale_factor = min_coeff_value / np.min(np.abs(coeffs))
+        if scale_factor <= 10:  # Only apply reasonable scaling
+            coeffs *= scale_factor
+            coeffs /= np.linalg.norm(coeffs)
+            if np.all(np.abs(coeffs) >= min_coeff_value):
+                true_c[true_indices] = coeffs
+                break
+    else:
+        # Fallback: use uniform coefficients that meet the threshold
+        print(f"Warning: Could not generate coefficients >= {min_coeff_value} after {max_attempts} attempts.")
+        print("Using uniform coefficients as fallback.")
+        coeffs = np.ones(k_demo) * min_coeff_value
+        coeffs /= np.linalg.norm(coeffs)
+        true_c[true_indices] = coeffs
+    
+    # Verify the constraint is satisfied
+    nonzero_coeffs = true_c[true_indices]
+    min_abs_coeff = np.min(np.abs(nonzero_coeffs))
+    print(f"Generated true_c with minimum absolute coefficient: {min_abs_coeff:.6f} (threshold: {min_coeff_value})")
+    assert min_abs_coeff >= min_coeff_value, f"Minimum coefficient {min_abs_coeff:.6f} is below threshold {min_coeff_value}"
+    
+    # Generate measurement matrix G such that G @ true_c ≈ 0, then set Sigma = G^T @ G
+    # This creates a more realistic sparse recovery scenario
+    print(f"Generating {m_demo} x {w_demo} measurement matrix G such that G @ true_c ≈ 0")
+    print(f"System type: {'Overdetermined' if m_demo > w_demo else 'Underdetermined' if m_demo < w_demo else 'Square'} ({m_demo}x{w_demo})")
+    
+    # Method: Create G whose rows are orthogonal to true_c, then add noise
+    G = np.random.randn(m_demo, w_demo)
+    
+    # Make ALL rows orthogonal to true_c first (before adding noise)
+    for i in range(m_demo):
+        # Project out the component in the direction of true_c
+        projection = np.dot(G[i], true_c) * true_c / np.dot(true_c, true_c)
+        G[i] = G[i] - projection
+    
+    # Now add noise to all rows
+    G *= global_noise_level  # Scale the orthogonal matrix by global noise level
+    
+    # Add small structured noise within the support
+    for i in range(m_demo):
         for j in true_indices:
-            Sigma_demo[i, j] = np.random.rand() * 0.1
-    Sigma_demo += np.random.rand(w_demo, w_demo) * 0.5
-    Sigma_demo = (Sigma_demo + Sigma_demo.T) / 2
+            G[i, j] += np.random.randn() * support_noise_level
+    
+    # Compute Sigma = G^T @ G  
+    Sigma_demo = G.T @ G
+    
+    # Verify that G @ true_c is small
+    residual_Gc = np.linalg.norm(G @ true_c)
+    print(f"||G @ true_c|| = {residual_Gc:.6e} (should be small)")
+    print(f"G shape: {G.shape}, Sigma shape: {Sigma_demo.shape}")
+    
+    # Apply optimal regularization
     min_eig = np.linalg.eigvalsh(Sigma_demo).min()
-    if min_eig < 0:
-        Sigma_demo += (abs(min_eig) + 1e-6) * np.identity(w_demo)
+    if min_eig < min_eig_threshold:
+        regularization = abs(min_eig) + regularization_amount
+        Sigma_demo += regularization * np.identity(w_demo)
+        print(f"Regularized Sigma by adding {regularization:.2e} * I to ensure positive definiteness")
+        print(f"Sigma min eigenvalue after regularization: {np.linalg.eigvalsh(Sigma_demo).min():.6e}")
+
+    # Compute and display the smallest 5 singular values of Sigma
+    singular_values = np.linalg.svd(Sigma_demo, compute_uv=False)
+    smallest_5_singular_values = np.sort(singular_values)[:5]
+    print(f"Smallest 5 singular values of Sigma: {smallest_5_singular_values}")
 
     print(f"Attempting greedy rounding regression for w={w_demo} terms and sparsity k={k_demo}...")
-    try:
-        # Example: Using trailing eigenvalue cuts (can also use cut_type="nuclear_norm")
-        c_solution, residual = greedy_rounding(Sigma_demo, k_demo, max_cuts=3, cut_type="trailing_eigenvalue")
+    # Set verbose=False for clean output, True to see Gurobi solver details
+    c_solution, residual, cutting_info = greedy_rounding(Sigma_demo, k_demo, max_cuts=max_cuts_demo, 
+                                           cut_type="trailing_eigenvalue", verbose=True, warm_start=True)
+                                           #cut_type="nuclear_norm", verbose=True)
 
-        print("\n--- Solution Summary ---")
-        print(f"Requested sparsity (k): {k_demo}")
-        print(f"Actual sparsity of identified solution: {np.sum(c_solution != 0)}")
-        print(f"Frobenius relative residual: {residual:.6e}")
+    # Print cutting plane information
+    if cutting_info['cuts_added'] > 0:
+        for i, violation in enumerate(cutting_info['cut_violations'], 1):
+            print(f"Added {cutting_info['violation_type']} cut {i} (violation: {violation:.6e}).")
+        if not cutting_info['converged']:
+            print(f"Reached maximum cuts ({max_cuts_demo}) without full convergence.")
+    else:
+        if cutting_info['violation_type'] == "eigenvalue":
+            print("X is approximately positive semidefinite after 0 cuts (tolerance). Stopping iterative cutting.")
+        elif cutting_info['violation_type'] == "nuclear_norm":
+            print("Nuclear norm condition satisfied after 0 cuts (tolerance). Stopping iterative cutting.")
+    
+    print(f"Cutting plane summary: {cutting_info['cuts_added']} cuts added, final {cutting_info['violation_type']} violation: {cutting_info['final_violation']:.6e}")
 
-        identified_nonzero_indices = np.where(c_solution != 0) # Extract indices
-        if len(identified_nonzero_indices) > 0:
-            print("\nIdentified non-zero coefficients (index: value):")
-            # Sort by absolute value descending for clarity
-            sorted_by_abs_value_indices = identified_nonzero_indices[np.argsort(np.abs(c_solution[identified_nonzero_indices]))[::-1]]
-            for idx in sorted_by_abs_value_indices[:10]: # Display up to top 10 for brevity
-                print(f" Index {idx}: {c_solution[idx]:.6f}")
-        else:
-            print("\nNo non-zero coefficients identified.")
+    print("\n--- Solution Summary ---")
+    print(f"Requested sparsity (k): {k_demo}")
+    print(f"Actual sparsity of identified solution: {np.sum(c_solution != 0)}")
+    print(f"Frobenius relative residual: {residual:.6e}")
 
-        print("\n--- Comparison to True (Synthetic) Support ---")
-        print(f"True non-zero indices: {np.sort(true_indices)}")
-        print(f"Identified non-zero indices: {np.sort(identified_nonzero_indices)}")
+    print(f"True coefficient vector (non-zero entries):")
+    # Sort indices by absolute value of coefficients (descending)
+    sorted_true_indices = sorted(true_indices, key=lambda idx: abs(true_c[idx]), reverse=True)
+    for idx in sorted_true_indices:
+        print(f"  Index {int(idx)}: {true_c[idx]:.6f}")
 
-        intersection = np.intersect1d(true_indices, identified_nonzero_indices)
-        precision = len(intersection) / len(identified_nonzero_indices) if len(identified_nonzero_indices) > 0 else 0
-        recall = len(intersection) / len(true_indices) if len(true_indices) > 0 else 0
-        f1_score = 0
-        if (precision + recall) > 0:
-            f1_score = 2 * (precision * recall) / (precision + recall)
+    identified_nonzero_indices = np.where(c_solution != 0)[0]
+    if len(identified_nonzero_indices) > 0:
+        print("\nIdentified non-zero coefficients (index: value):")
+        # Sort by absolute value descending for clarity
+        sorted_by_abs_value_indices = identified_nonzero_indices[np.argsort(np.abs(c_solution[identified_nonzero_indices]))[::-1]]
+        for idx in sorted_by_abs_value_indices:
+            print(f" Index {int(idx)}: {c_solution[idx]:.6f}")
+    else:
+        print("\nNo non-zero coefficients identified.")
 
-        print(f"Precision (proportion of identified indices that are truly relevant): {precision:.2f}")
-        print(f"Recall (proportion of truly relevant indices that were identified): {recall:.2f}")
-        print(f"F1-score (harmonic mean of precision and recall): {f1_score:.2f}")
+    print("\n--- Comparison to True (Synthetic) Support ---")
+    print(f"True non-zero indices: {[int(idx) for idx in sorted_true_indices]}")
+    print(f"Identified non-zero indices: {[int(idx) for idx in sorted_by_abs_value_indices]}")
 
-    except gp.GurobiError as e:
-        print(f"Gurobi Error encountered: {e.message}")
-    except RuntimeError as e:
-        print(f"Runtime Error: {e}")
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+    intersection = np.intersect1d(true_indices, identified_nonzero_indices)
+    precision = len(intersection) / len(identified_nonzero_indices) if len(identified_nonzero_indices) > 0 else 0
+    recall = len(intersection) / len(true_indices) if len(true_indices) > 0 else 0
+    f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+
+    print(f"Precision (proportion of identified indices that are truly relevant): {precision:.2f}")
+    print(f"Recall (proportion of truly relevant indices that were identified): {recall:.2f}")
+    print(f"F1-score (harmonic mean of precision and recall): {f1_score:.2f}")

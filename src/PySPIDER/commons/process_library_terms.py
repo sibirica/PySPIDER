@@ -651,7 +651,7 @@ def int_by_parts(term, weight, by_parts=True, dim=0):
 
 # for integration by parts, check terms that look like x', x*x', and x*x*x' (vs all other terms have derivative orders
 # smaller by at least 2) 
-# maybe his misses out on opportunities to integrate by parts using a different basis, but this seems
+# maybe this misses out on opportunities to integrate by parts using a different basis, but this seems
 # too difficult to automate; at that point it's probably easier to just write the term out manually.
 
 # match statement for scalar or tensor weight?
