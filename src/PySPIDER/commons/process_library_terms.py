@@ -340,9 +340,16 @@ def parallel_domain_task(domain):
     for t, w, term, tensor_weight in dataset.integrated_terms_tuples:
         if w.scale == 0:
             continue
-        value = dataset.eval_on_domain(t,w,domain,debug=debug)
+        value = dataset.eval_on_domain(t,w,domain)
         key = term, tensor_weight
         domain_results_dict[key] += value
+    
+    # Free up memory by removing cached field_dict entries for this domain
+    if dataset.cleanup_cache and dataset.field_dict is not None:
+        keys_to_remove = [key for key in dataset.field_dict.keys() if len(key) == 2 and key[1] == domain]
+        for key in keys_to_remove:
+            del dataset.field_dict[key]
+    
     return domain, domain_results_dict
 
 @dataclass(kw_only=True)
@@ -352,6 +359,7 @@ class AbstractDataset(object): # template for structure of all data associated w
     observables: List[Observable]  # list of observables
     # storage of computed quantities: (prim, domains) [not dims] -> array
     cache_primes: bool = True # whether the field_dict is used
+    cleanup_cache: bool = True # whether to clean up field_dict entries after parallel domain processing
     field_dict: dict[tuple[Any, ...], np.ndarray[float]] = None 
     
     dxs: List[float] = None # grid spacings
@@ -439,11 +447,11 @@ class AbstractDataset(object): # template for structure of all data associated w
             lenf = len(filtered_flat)
             if lenf==0:
                 print("ARRAY IS 0")
-            else:
-                print("MIDDLE NZ VALUE OF ARRAY:", '{:.2E}'.format(filtered_flat[lenf//2])) # middle of the array
+            #else:
+            #    print("MIDDLE NZ VALUE OF ARRAY:", '{:.2E}'.format(filtered_flat[lenf//2])) # middle of the array
         result = int_arr(term_weight_product, dxs=self.dxs)
-        if debug:
-            print('Integrated result', result)
+        #if debug:
+        #    print('Integrated result', result)
         return result
 
     # to be used in non-identity metric case
@@ -550,10 +558,25 @@ class AbstractDataset(object): # template for structure of all data associated w
         #precompute symbolic manipulations for parallel tasks
         self.integrated_terms_tuples = []
         for term in list(self.libs[irrep].terms):
+            if debug:
+                print("UNINDEXED TERM:")
+                print(term)
+                term_symmetry = term.symmetry()
+                print("Symmetry:", term_symmetry)
             for weight in list(self.weights):
                 for tensor_weight in self.tensor_weight_basis[(irrep, weight)].tw_list:
-                    for indexed_term, scalar_weight in self.get_index_assignments(term,tensor_weight):
+                    if debug:
+                        print("Tensor weight:", tensor_weight)
+                    for indexed_term, scalar_weight in self.get_index_assignments(term,tensor_weight): #, debug
+                        if debug:
+                            print("ASSIGNMENTS:", term, "->")
+                            print("Indexed term:", indexed_term)
+                            print("Scalar weight:", scalar_weight)
                         for t, w in int_by_parts(indexed_term, scalar_weight, by_parts):
+                            if debug:
+                                print("INT BY PARTS:", indexed_term, "->")
+                                print("Integrated term:", t)
+                                print("Integrated weight:", w)
                             self.integrated_terms_tuples.append((t,w,term,tensor_weight))
 
         #begin parallel task execution
@@ -589,10 +612,10 @@ class AbstractDataset(object): # template for structure of all data associated w
         return Q_matrix
 
         
-    def make_library_matrices(self, by_parts=True, debug=False, parallel=False, num_processors=None): # compute LibraryData Q matrices
+    def make_library_matrices(self, by_parts=True, debug=False, parallel=True, num_processors=None): # compute LibraryData Q matrices
         for irrep in self.irreps:
             if debug:
-                print(f"***RANK {irrep} LIBRARY***")
+                print(f"***{irrep} LIBRARY***")
             if parallel:
                 self.libs[irrep].Q = self.make_Q_parallel(irrep, by_parts, debug, num_processors)
             else:

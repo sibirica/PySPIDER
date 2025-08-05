@@ -12,6 +12,54 @@ from PySPIDER.commons.utils import regex_find
 from PySPIDER.discrete.convolution import *
 from PySPIDER.discrete.library import *
 
+import concurrent.futures
+from collections import defaultdict
+
+
+#function for initializing global variables for each parallel worker process (discrete version)
+def discrete_init_domain_worker(dataset_init, current_irrep_init, by_parts_init, debug_init):
+    global worker_dataset, worker_current_irrep, worker_by_parts, worker_debug
+    worker_dataset = dataset_init
+    worker_current_irrep = current_irrep_init
+    worker_by_parts = by_parts_init
+    worker_debug = debug_init
+
+#function to be executed in parallel to evaluate all terms for a given domain (discrete version with rho handling)
+def discrete_parallel_domain_task(domain):
+    dataset = worker_dataset
+    irrep = worker_current_irrep
+    by_parts = worker_by_parts
+    debug = worker_debug
+
+    domain_results_dict = defaultdict(float)
+    rho_std_for_domain = None
+
+    for t, w, term, tensor_weight in dataset.integrated_terms_tuples:
+        if w.scale == 0:
+            continue
+        value = dataset.eval_on_domain(t,w,domain)
+        key = term, tensor_weight
+        domain_results_dict[key] += value
+    
+    # Compute rho standard deviation before cleanup (if cleanup is enabled)
+    if dataset.cleanup_cache and dataset.field_dict is not None:
+        # Find rho prime and compute its std for this domain
+        for key in dataset.field_dict.keys():
+            if len(key) == 2 and key[1] == domain:
+                prime = key[0]
+                # Check if this prime corresponds to rho (string representation is exactly 'ρ')
+                if hasattr(prime, '__str__') and 'ρ'==str(prime):
+                    rho_data = dataset.field_dict[key]
+                    rho_std_for_domain = np.std(rho_data)
+                    break  # Found rho prime, no need to continue
+        
+        # Free up memory by removing cached field_dict entries for this domain
+        keys_to_remove = [key for key in dataset.field_dict.keys() if len(key) == 2 and key[1] == domain]
+        for key in keys_to_remove:
+            del dataset.field_dict[key]
+    
+    return domain, domain_results_dict, rho_std_for_domain
+
 @dataclass(kw_only=True)
 class SRDataset(AbstractDataset):  # structures all data associated with a given sparse regression dataset
     particle_pos: np.ndarray[float]  # array of particle positions (particle, spatial index, time)
@@ -26,6 +74,9 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
     rho_scale: float=1 # density rescaling factor
     #field_dict: dict[tuple[Any], np.ndarray[float]] = None # storage of computed coarse-grained quantities: (cgp, dims, domains) -> array
     
+    # Storage for rho statistics computed during parallel processing
+    rho_domain_stds: List[float] = None
+    
     #cgps: set[CoarseGrainedPrimitive] = None # list of coarse-grained primitives involved
 
     def __post_init__(self):
@@ -33,6 +84,7 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
         self.scaled_sigma = self.kernel_sigma * self.cg_res
         self.scaled_pts = self.particle_pos * self.cg_res
         self.dxs = [1 / self.cg_res] * (self.n_dimensions - 1) + [float(self.deltat)]  # spacings of sampling grid
+        self.rho_domain_stds = None  # Initialize rho statistics storage
         #self.rho_scale = self.particle_pos.shape[0]/np.prod(self.world_size[:-1]) # mean number density
         #self.cgps = set()
 
@@ -90,7 +142,6 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
                         self.domain_neighbors[domain, t].append(i)
 
     def eval_prime(self, prime: LibraryPrime, domain: IntegrationDomain, experimental: bool = True, order: int = 4):
-        # experimental: bool = True,
         cgp = prime.derivand
         if self.n_dimensions != 3:
             if experimental:
@@ -219,20 +270,24 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
         self.scale_dict['rho'] = dict()
         #self.rho_scale = self.particle_pos.shape[0] / np.prod(self.world_size[:-1])
         self.scale_dict['rho']['mean'] = self.particle_pos.shape[0] / np.prod(self.world_size[:-1]) / self.rho_scale
-        #self.scale_dict['rho']['mean'] = 1
 
-        #print(self.field_dict.keys())
-        all_cgps = [key[0] for key in self.field_dict.keys()]
-        rho_matches = regex_find(all_cgps, r'ρ')
-        rho_ind = next(rho_matches)[0]
-        rho = all_cgps[rho_ind]
-        all_rho_data = np.dstack([self.field_dict[rho, domain] for domain in self.domains])
-        rho_std = np.std(all_rho_data)
-        #print(all_rho_data)
-        #rho_std = np.std(np.dstack([self.cg_dict[rho_cgp, (), domain] for domain in self.domains]))
-        self.scale_dict['rho']['std'] = rho_std
+        # Use precomputed rho standard deviations if available (from parallel processing)
+        if hasattr(self, 'rho_domain_stds') and self.rho_domain_stds is not None:
+            # Compute RMS of per-domain standard deviations
+            rho_std = np.sqrt(np.mean(np.array(self.rho_domain_stds) ** 2))
+            self.scale_dict['rho']['std'] = rho_std
+        else:
+            # Fallback to original method if parallel processing wasn't used or cleanup was disabled
+            #print(self.field_dict.keys())
+            all_cgps = [key[0] for key in self.field_dict.keys()]
+            rho_matches = regex_find(all_cgps, r'ρ')
+            rho_ind = next(rho_matches)[0]
+            rho = all_cgps[rho_ind]
+            all_rho_data = np.dstack([self.field_dict[rho, domain] for domain in self.domains])
+            rho_std = np.std(all_rho_data)
+            self.scale_dict['rho']['std'] = rho_std
 
-    ### TO DO: compute correlation length/time automatically
+    ### TO DO: compute correlation length/time automatically?
     def set_LT_scale(self, L, T):
         self.xscale = L
         self.tscale = T
@@ -257,17 +312,73 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
             product /= self.tscale ** torder
         return product
 
-    # this function is a bit problematic as there isn't a clear correct way to do this, so we will not implement it
-    # def find_row_weights(self):
-    #     rho_col = find_term(self.libs[0].terms, 'rho')
-    #     # integral of rho with the 0 harmonics weight
-    #     dom_densities = self.libs[0].Q[0:len(self.domains), rho_col]
-    #     row_weights0 = np.tile(dom_densities, len(self.weights))
-    #     # scale weights according to square root of density (to cancel CLT noise scaling)
-    #     row_weights0 = np.sqrt(row_weights0)
-    #     row_weights0 += 1e-6  # don't want it to be exactly zero
-    #     # normalize
-    #     row_weights0 /= np.max(row_weights0)
-    #     row_weights1 = np.tile(row_weights0, self.n_dimensions - 1)  # because each dimension gets its own row
-    #     self.libs[0].row_weights = row_weights0
-    #     self.libs[1].row_weights = row_weights1
+    def make_Q_parallel(self, irrep, by_parts=True, debug=False, num_processors=None):
+        """Override parent method to handle rho statistics for discrete datasets"""
+        # Main method logic (adapted from parent)
+        init_args = (self, irrep, by_parts, debug)
+        domains = self.domains
+        all_results = []
+        rho_stds = []
+
+        #precompute symbolic manipulations for parallel tasks
+        self.integrated_terms_tuples = []
+        for term in list(self.libs[irrep].terms):
+            if debug:
+                print("UNINDEXED TERM:")
+                print(term)
+                term_symmetry = term.symmetry()
+                print("Symmetry:", term_symmetry)
+            for weight in list(self.weights):
+                for tensor_weight in self.tensor_weight_basis[(irrep, weight)].tw_list:
+                    if debug:
+                        print("Tensor weight:", tensor_weight)
+                    for indexed_term, scalar_weight in self.get_index_assignments(term,tensor_weight): #, debug
+                        if debug:
+                            print("ASSIGNMENTS:", term, "->")
+                            print("Indexed term:", indexed_term)
+                            print("Scalar weight:", scalar_weight)
+                        for t, w in int_by_parts(indexed_term, scalar_weight, by_parts):
+                            if debug:
+                                print("INT BY PARTS:", indexed_term, "->")
+                                print("Integrated term:", t)
+                                print("Integrated weight:", w)
+                            self.integrated_terms_tuples.append((t,w,term,tensor_weight))
+
+        #begin parallel task execution
+        with concurrent.futures.ProcessPoolExecutor(max_workers=num_processors, initializer=discrete_init_domain_worker, initargs=init_args) as executor:
+            results = executor.map(discrete_parallel_domain_task, domains)
+            for result in results:
+                domain, domain_results, rho_std = result
+                all_results.append((domain, domain_results))
+                if rho_std is not None:
+                    rho_stds.append(rho_std)
+        
+        # Store rho standard deviations for later use in find_scales
+        if rho_stds:
+            self.rho_domain_stds = rho_stds
+                  
+        terms = list(self.libs[irrep].terms)
+        weights = list(self.weights)
+        num_cols = len(terms)
+        term_to_col_idx = {term: i for i, term in enumerate(terms)}
+        row_map = {}
+        current_row_idx = 0
+        for weight in weights:
+            for tensor_weight in self.tensor_weight_basis[(irrep, weight)].tw_list:
+                for domain in domains:
+                    row_key = (tensor_weight, domain)
+                    if row_key not in row_map:
+                        row_map[row_key] = current_row_idx
+                        current_row_idx += 1
+        num_rows = current_row_idx
+
+        Q_matrix = np.zeros((num_rows, num_cols), dtype=np.float64)
+
+        for domain, domain_results in all_results:
+            for (term, tensor_weight), result in domain_results.items():
+                col_idx = term_to_col_idx[term]
+                row_idx = row_map[(tensor_weight, domain)]
+
+                Q_matrix[row_idx, col_idx] = result
+
+        return Q_matrix

@@ -704,11 +704,21 @@ def hybrid_residual(theta, xi, scaler, return_xi=False): # compute the "hybrid" 
     norm = np.linalg.norm(theta[:, terms])
     norm = 1 if norm==0 else norm
     xi = xi/np.linalg.norm(xi)
+    lambd = np.linalg.norm(theta @ xi)/norm
+
+    #print("xi before postprocessing:", xi)
+    #print("lambd before postprocessing:", lambd)
+    #print("norm:", norm)
+
+    xi, lambd, _ = scaler.postprocess_multi_term(xi, lambd)
+
+    #print("xi after postprocessing:", xi)
+    #print("lambd after postprocessing:", lambd)
     if return_xi:
-        xi, lambd, _ = scaler.postprocess_multi_term(xi, np.linalg.norm(theta @ xi)/norm)
+        #xi, lambd, _ = scaler.postprocess_multi_term(xi, np.linalg.norm(theta @ xi)/norm)
         return lambd, xi[scaler.sub_inds]
     else:
-        return np.linalg.norm(theta @ xi)/norm
+        return lambd
 
 # taken with minor modifications from Bertsimas & Gurnee, 2023
 def AIC(lambd, k, m, add_correction=True):

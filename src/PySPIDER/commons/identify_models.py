@@ -50,6 +50,7 @@ def identify_equations(lib_object, reg_opts, print_opts=None, threshold=1e-5, mi
                 reg_opts['term_names'] = sublibrary
                 #print(reg_opts)
                 eq, res, test_res, reg_result = make_equation_from_Xi(sparse_reg_bf(Q, **reg_opts), library, threshold)
+                #print(eq)
             else:
                 reg_opts['subinds'] = inds
                 eq, res, test_res, reg_result = make_equation_from_Xi(sparse_reg(Q, **reg_opts), sublibrary, threshold)
@@ -71,7 +72,7 @@ def identify_equations(lib_object, reg_opts, print_opts=None, threshold=1e-5, mi
                 print(f'Identified model: {eq.pstr(**print_opts)} (order {complexity}, residual {res:.2e})')
             else:               
                 print(f'Identified model: {eq.pstr(**print_opts)} (order {complexity}, train res {res:.2e}, test res {test_res:.2e})')
-            if report_accuracy:
+            if report_accuracy and len(eq.terms) > 1:
                 xi = reg_result.xi
                 rh = hybrid_residual(Q, xi, reg_opts['scaler'])
                 print(f'(r_h = {rh:.2e})')
@@ -162,6 +163,8 @@ def make_equation_from_Xi(reg_result, sublibrary, threshold):
     lambda1 = reg_result.lambda1 
     lambda_test = reg_result.lambda_test
     lambda1_test = reg_result.lambda1_test
+
+    #print("Xi:", Xi)
     if lambda1 < lambd or lambda1 < threshold: # always select sub-threshold one-term model
         return Equation(terms=(sublibrary[best_term],), coeffs=(1,)), lambda1, lambda1_test, reg_result
     else:
