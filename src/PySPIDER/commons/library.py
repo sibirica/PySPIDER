@@ -1,18 +1,21 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace, KW_ONLY
-from typing import List, Dict, Union, Tuple, Iterable, Generator
-from functools import cached_property#, lru_cache#, reduce 
-from operator import add
+from dataclasses import dataclass, replace, KW_ONLY #, field
+from typing import Union, Iterable, Generator, Callable, Optional # List, Dict, Tuple
+from functools import cached_property #, lru_cache, reduce 
+#from operator import add
 from collections import defaultdict, Counter
 
 import re
 import unicodedata
 
-import numpy as np
 from numpy import prod
 
-from PySPIDER.commons.z3base import *
+from .z3base import (
+    lowercase_greek_letters,
+    IndexHole, VarIndex, LiteralIndex, Index, EinSumExpr, SymmetryRep,
+    index_rank, highest_index, generate_indexings
+)
 
 # list of substitutions to go between plaintext and LaTeX output
 latex_replacements = {'·': '\\cdot', '²': '^2', '³': '^3', '⁴': '^4', '⁵': '^5', '⁶': '^6',
@@ -189,7 +192,7 @@ def ES_sum(*equations: LibraryTerm | Equation):
     return Equation(terms=terms, coeffs=coeffs)
 
 # create a copy of the prime with a new set of derivative orders
-def set_order_counts(p: Prime, counts: Counter[int]) -> Prime:
+def set_order_counts(p: LibraryPrime, counts: Counter[int]) -> LibraryPrime:
     torder = counts['t']
     ct_copy = counts.copy()
     ct_copy['t'] = 0
@@ -311,7 +314,7 @@ class Observable[T](EinSumExpr):
     _: KW_ONLY
     string: str  # String representing the Observable.
     rank: Union[int, SymmetryRep]
-    indices: Tuple[T, ...] = None
+    indices: tuple[T, ...] = None
     can_commute_indices: bool = False # set to true for symmetric or antisymmetric
     antisymmetric: bool = False
 
@@ -505,7 +508,7 @@ class LibraryTerm[T, Derivand](EinSumExpr):
         return sum((prime.complexity) for prime in self.primes)
 
     #@lru_cache
-    def symmetry(self, free_ind1=0, free_ind2=1) -> Optional[Int]:
+    def symmetry(self, free_ind1=0, free_ind2=1) -> Optional[int]:
         def transpose(ind):
             if ind.value == free_ind1:
                 return VarIndex(free_ind2)
@@ -727,7 +730,7 @@ class Equation[T, Derivand]:  # can represent equation (expression = 0) OR expre
         else:
             return canonicalize(self.terms[0]) # may need structural canonicalization too - check
 
-def partition(n: int, k: int, weights: Optional[Tuple[int, ...]]) -> Generator[Tuple[int, ...], None, None]:
+def partition(n: int, k: int, weights: Optional[tuple[int, ...]]) -> Generator[tuple[int, ...], None, None]:
     """
     Given k bins (represented by a k-tuple), it yields every possible way to distribute x elements among those bins,
     with x ranging from 0 to n. For example partition(n=3, k=2) -> [(0, 0), (0, 1), (0, 2), (0, 3), (1, 0), (1, 1),

@@ -1,16 +1,18 @@
-from typing import Any, Union, Iterable
+from typing import Any, Union, Iterable, Callable
 from warnings import warn
 
 import numpy as np
 from findiff import FinDiff
-from functools import reduce
-from operator import mul
-from dataclasses import dataclass, replace
+from functools import reduce, cached_property
+#from operator import mul
+from dataclasses import dataclass, replace, field
+from collections import defaultdict
 
 import concurrent.futures
 
-from PySPIDER.commons.library import *
-from PySPIDER.commons.weight import *
+from .z3base import highest_index, Irrep, FullRank, SymmetricTraceFree, Antisymmetric, LiteralIndex
+from .library import LibraryTerm, ConstantTerm, Observable, ES_prod
+from .weight import weight_1d
 
 # if we want to use integration domains with different sizes & spacings, it might be
 # better to store that information within this object as well
@@ -43,15 +45,15 @@ class IntegrationDomain(object):
 
 @dataclass
 class Weight(object): # scalar-valued Legendre polynomial weight function (may rename class to LegendreWeight)
-    m: List[int]
-    q: List[int]
-    k: List[int]
+    m: list[int]
+    q: list[int]
+    k: list[int]
     dxs: Iterable[float] = None
     n_dimensions: int = None
     n_spatial_dim: int = None
     scale: float = 1
     ready: bool = False
-    weight_objs: List[np.polynomial.Polynomial] = None
+    weight_objs: list[np.polynomial.Polynomial] = None
         
     def __post_init__(self):
         self.n_dimensions = len(self.m)
@@ -340,7 +342,7 @@ def parallel_domain_task(domain):
     for t, w, term, tensor_weight in dataset.integrated_terms_tuples:
         if w.scale == 0:
             continue
-        value = dataset.eval_on_domain(t,w,domain)
+        value = dataset.eval_on_domain(t, w, domain)
         key = term, tensor_weight
         domain_results_dict[key] += value
     
@@ -354,33 +356,33 @@ def parallel_domain_task(domain):
 
 @dataclass(kw_only=True)
 class AbstractDataset(object): # template for structure of all data associated with a given sparse regression dataset
-    world_size: List[float] # linear dimensions of dataset in physical units (spatial + time)
-    data_dict: Dict[Observable, np.ndarray[float]] # observable -> array of values (e.g. discrete - particle, spatial index, time)
-    observables: List[Observable]  # list of observables
+    world_size: list[float] # linear dimensions of dataset in physical units (spatial + time)
+    data_dict: dict[Observable, np.ndarray[float]] # observable -> array of values (e.g. discrete - particle, spatial index, time)
+    observables: list[Observable]  # list of observables
     # storage of computed quantities: (prim, domains) [not dims] -> array
     cache_primes: bool = True # whether the field_dict is used
     cleanup_cache: bool = True # whether to clean up field_dict entries after parallel domain processing
     field_dict: dict[tuple[Any, ...], np.ndarray[float]] = None 
     
-    dxs: List[float] = None # grid spacings
-    weight_dxs: List[float] = None
-    scalar_weights: List[Weight] = None
-    tensor_weight_basis: Dict[Tuple[Union[int, Irrep, Weight], ...], TensorWeightBasis] = field(default_factory=dict)  # (irrep, weight) -> stack
+    dxs: list[float] = None # grid spacings
+    weight_dxs: list[float] = None
+    scalar_weights: list[Weight] = None
+    tensor_weight_basis: dict[tuple[Union[int, Irrep, Weight], ...], TensorWeightBasis] = field(default_factory=dict)  # (irrep, weight) -> stack
     # size of domain in grid units (NOT SUBGRID UNITS, AS ACTUALLY USED IN DISCRETE COMPUTATION)
-    domain_size: List[float] = None 
-    domains: List[IntegrationDomain] = None
+    domain_size: list[float] = None 
+    domains: list[IntegrationDomain] = None
     pad: float = 0
-    libs: Dict[Union[int, Irrep], LibraryData] = None # irrep label (e.g. 0, 1, "2s" irrep) -> LibraryData object
-    irreps: List[Union[int, str]] = (0, 1) # set of irreducible representations to generate libraries for = libs.keys()
+    libs: dict[Union[int, Irrep], LibraryData] = None # irrep label (e.g. 0, 1, "2s" irrep) -> LibraryData object
+    irreps: list[Union[int, str]] = (0, 1) # set of irreducible representations to generate libraries for = libs.keys()
 
-    scale_dict: Dict[str, float] = None # dict of characteristic scales of observables -> (mean, std)
+    scale_dict: dict[str, float] = None # dict of characteristic scales of observables -> (mean, std)
     xscale: float = 1  # length scale for correct computation of char scales (default 1)
     tscale: float = 1  # time scale
 
     metric: Metric = None # we support only constant coeff metrics for now
     metric_is_identity: bool = True
 
-    integrated_terms_tuples: List[Tuple[LibraryTerm,Weight,LibraryTerm,TensorWeight]] = None
+    integrated_terms_tuples: list[tuple[LibraryTerm, Weight, LibraryTerm, TensorWeight]] = None # for tracking parallel domain tasks
 
     def __post_init__(self):
         self.n_dimensions = len(self.world_size) # number of dimensions (spatial + temporal)

@@ -1,13 +1,19 @@
 import copy
-from functools import reduce
-from operator import add
-from itertools import permutations
+from functools import cached_property # reduce
+#from operator import add
+#from itertools import permutations
 from numpy import prod
 import numpy as np
 from collections import Counter
+from typing import Union, Callable, Iterable, Generator # Tuple, List,
+from dataclasses import dataclass, replace, KW_ONLY
 
-from PySPIDER.commons.z3base import *
-from PySPIDER.commons.library import *
+from ..commons.z3base import (
+    EinSumExpr, index_rank, generate_indexings # VarIndex, IndexHole
+)
+from ..commons.library import (
+    Observable, DerivativeOrder, LibraryPrime, LibraryTerm, ConstantTerm, partition
+)
 
 @dataclass(frozen=True, order=True)
 class CoarseGrainedProduct[T](EinSumExpr):
@@ -15,7 +21,7 @@ class CoarseGrainedProduct[T](EinSumExpr):
     Dataclass representing rho[product]
     """
     _: KW_ONLY
-    observables: Tuple[Observable]
+    observables: tuple[Observable]
 
     @cached_property
     def complexity(self):
@@ -48,11 +54,11 @@ class CoarseGrainedProduct[T](EinSumExpr):
         sign = prod([pair[1] for pair in ecs], initial=1)
         return CoarseGrainedProduct(observables=tuple(sorted([pair[0] for pair in ecs]))), sign
 
-def generate_terms_to(max_complexity: int, observables: List[Observable],
+def generate_terms_to(max_complexity: int, observables: list[Observable],
                       max_rank: int = 2, max_observables: int = 999, max_rho: int = 999,
                       max_dt: int = 999, max_dx: int = 999,
                       max_observable_counts: dict[Observable, int] = None, **kwargs) -> \
-                      List[Union[ConstantTerm, LibraryTerm]]:
+                      list[Union[ConstantTerm, LibraryTerm]]:
     """
     Given a list of Observable objects and a complexity order, returns the list of all LibraryTerms 
     with complexity up to order and rank up to max_rank using at most max_observables copies of the observables.
@@ -106,12 +112,12 @@ def generate_terms_to(max_complexity: int, observables: List[Observable],
                 libterms.append(labeled.eq_canon()[0]) 
     return libterms
 
-def valid_prime_lists(primes: List[LibraryPrime],
+def valid_prime_lists(primes: list[LibraryPrime],
                       max_complexity: int,
                       max_observables: int,
                       max_rho: int,
                       max_observable_counts: Counter, 
-                      non_empty: bool = False) -> List[Union[ConstantTerm, LibraryTerm]]:
+                      non_empty: bool = False) -> Generator[tuple[LibraryPrime, ...], None, None]:
     # starting_ind: int
     """
     Generate components of valid terms from list of primes, with maximum complexity = max_complexity, maximum number of observables = max_observables, max number of primes = max_rho.

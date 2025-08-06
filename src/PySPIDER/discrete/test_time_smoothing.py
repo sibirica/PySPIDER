@@ -9,10 +9,11 @@ import matplotlib.animation as animation
 from pathlib import Path
 
 # Import the SPIDER modules
-from process_library_terms import SRDataset
-from PySPIDER.commons.library import *
-from PySPIDER.commons.process_library_terms import IntegrationDomain
-from PySPIDER.discrete.library import *
+from .process_library_terms import SRDataset
+from ..commons.library import Observable, DerivativeOrder, LibraryPrime
+from ..commons.process_library_terms import IntegrationDomain
+from ..commons.z3base import LiteralIndex
+from .library import CoarseGrainedProduct
 
 
 def load_lj_data(data_path="discrete/LJ/positions_rho_0.30_savefreq_3.npz"):

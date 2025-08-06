@@ -1,5 +1,10 @@
-from PySPIDER.commons.process_library_terms import *
-from PySPIDER.continuous.library import *
+import numpy as np
+
+from ..commons.process_library_terms import (
+    AbstractDataset, IntegrationDomain, LibraryData, diff, get_slice
+)
+from ..commons.z3base import LiteralIndex, FullRank, Antisymmetric, SymmetricTraceFree
+from .library import generate_terms_to
 
 class SRDataset(AbstractDataset):
     #field_dict: dict[tuple[Any], np.ndarray[float]] = None # storage of computed coarse-grained quantities: (prim, dims, domains) -> array

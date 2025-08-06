@@ -4,8 +4,8 @@ import copy
 
 import random # for test-train sampling
 
-from PySPIDER.commons.TInvPower import TInvPower
-from PySPIDER.commons.sr_utils import *
+from .TInvPower import TInvPower
+from .sr_utils import smallest_sv, solve
 
 # new approach: for modularity, pass objects handling separate steps of the regression with their own params
 

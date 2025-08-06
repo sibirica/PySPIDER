@@ -1,11 +1,13 @@
 # It may or may not be nicer to take the SRDataset object as input for some of these
+import numpy as np
 from timeit import default_timer as timer
 from functools import reduce
 from operator import add
 
-from PySPIDER.commons.library import *
-from PySPIDER.commons.sparse_reg import *
-from PySPIDER.commons.sparse_reg_bf import *
+from .library import Equation, canonicalize, dt_fun, dx_fun, contract
+from .sparse_reg import sparse_reg
+from .sparse_reg_bf import sparse_reg_bf, hybrid_residual
+from .z3base import FullRank, Antisymmetric, SymmetricTraceFree
     
 def identify_equations(lib_object, reg_opts, print_opts=None, threshold=1e-5, min_complexity=1,
                        max_complexity=None, max_equations=999, timed=True, experimental=True, report_accuracy=False,

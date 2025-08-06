@@ -1,21 +1,23 @@
-import copy
-from functools import reduce
-from numbers import Real
-from operator import add
-from typing import Any, Optional
-from warnings import warn
+#import copy
+#from functools import reduce
+#from numbers import Real
+#from operator import add
+from typing import Iterable, Union, Generator # Any, Optional
+#from warnings import warn
 from collections import defaultdict
 
 #from numpy import inf
 
-from PySPIDER.commons.z3base import *
-from PySPIDER.commons.library import *
+from ..commons.z3base import generate_indexings
+from ..commons.library import (
+    Observable, LibraryPrime, LibraryTerm, ConstantTerm, DerivativeOrder, partition
+)
 
 def generate_terms_to(max_complexity: int, observables: Iterable[Observable],
                       max_rank: int = 2, max_observables: int = 999,
                       max_observable_counts: dict[Observable, int] = None, 
                       max_dt: int = 999, max_dx: int = 999, **kwargs,
-                      ) -> List[Union[ConstantTerm, LibraryTerm]]:
+                      ) -> list[Union[ConstantTerm, LibraryTerm]]:
     """
     Given a list of Observable objects and a complexity order, returns the list of all LibraryTerms with complexity up to max_complexity and rank up to max_rank using at most max_observables copies of the observables.
 
@@ -60,11 +62,11 @@ def generate_terms_to(max_complexity: int, observables: Iterable[Observable],
                 libterms.append(labeled.eq_canon()[0]) 
     return libterms
 
-def valid_prime_lists(primes: List[LibraryPrime],
+def valid_prime_lists(primes: list[LibraryPrime],
                       max_complexity: int,
                       max_observables: int,
                       max_observable_counts: dict[Observable, int],
-                      non_empty: bool = False) -> List[Union[ConstantTerm, LibraryTerm]]:
+                      non_empty: bool = False) -> Generator[tuple[LibraryPrime, ...], None, None]:
     # starting_ind: int
     """
     Generate components of valid terms from list of primes, with maximum complexity = max_complexity, maximum number of observables = max_observables, max number of primes = max_rho, and max of each observable count = max_observable_counts[observable].

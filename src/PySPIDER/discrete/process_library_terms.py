@@ -1,17 +1,20 @@
 import warnings
+from typing import Any
+from dataclasses import dataclass
 
 import numpy as np
 import scipy
 from scipy.stats._stats import gaussian_kernel_estimate
 from scipy.ndimage import gaussian_filter1d
 # uncomment the next line if it isn't broken for you
-from PySPIDER.discrete.coarse_grain_utils import coarse_grain_time_slices, poly_coarse_grain_time_slices
+from .coarse_grain_utils import poly_coarse_grain_time_slices #coarse_grain_time_slices, 
 
-from PySPIDER.commons.process_library_terms import *
-from PySPIDER.commons.library import *
-from PySPIDER.commons.utils import regex_find
-from PySPIDER.discrete.convolution import *
-from PySPIDER.discrete.library import *
+from ..commons.process_library_terms import AbstractDataset, IntegrationDomain, LibraryData, int_by_parts, diff
+from ..commons.library import LibraryPrime #, Observable
+from ..commons.z3base import LiteralIndex, FullRank, Antisymmetric, SymmetricTraceFree
+from ..commons.utils import regex_find
+from .convolution import gauss1d
+from .library import generate_terms_to #, CoarseGrainedProduct
 
 import concurrent.futures
 from collections import defaultdict
@@ -69,14 +72,14 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
     cg_res: float
     deltat: float
     # not sure what the type-hinting was supposed to be here
-    domain_neighbors: dict[[IntegrationDomain, float], int] = None # indices of neighbors of each ID at given time
+    domain_neighbors: dict[tuple[IntegrationDomain, float], int] = None # indices of neighbors of each ID at given time
     cutoff: float=6 # how many std deviations to cut off Gaussian weight functions at
     rho_scale: float=1 # density rescaling factor
     time_sigma: float=0 # standard deviation for temporal smoothing kernel (0 = no smoothing)
     #field_dict: dict[tuple[Any], np.ndarray[float]] = None # storage of computed coarse-grained quantities: (cgp, dims, domains) -> array
     
     # Storage for rho statistics computed during parallel processing
-    rho_domain_stds: List[float] = None
+    rho_domain_stds: list[float] = None
     
     #cgps: set[CoarseGrainedPrimitive] = None # list of coarse-grained primitives involved
 

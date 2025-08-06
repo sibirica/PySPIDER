@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 #from functools import lru_cache
-from typing import Any, Protocol, Union, Tuple, List, assert_type
+from typing import Any, Tuple, List, assert_type # Protocol, Union
 from abc import abstractmethod, ABC
 from collections import defaultdict, Counter
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field, replace, KW_ONLY
+from dataclasses import dataclass, KW_ONLY # field, replace
 from itertools import count, permutations
 import z3
 
