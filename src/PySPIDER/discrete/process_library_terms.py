@@ -3,6 +3,7 @@ import warnings
 import numpy as np
 import scipy
 from scipy.stats._stats import gaussian_kernel_estimate
+from scipy.ndimage import gaussian_filter1d
 # uncomment the next line if it isn't broken for you
 from PySPIDER.discrete.coarse_grain_utils import coarse_grain_time_slices, poly_coarse_grain_time_slices
 
@@ -14,7 +15,6 @@ from PySPIDER.discrete.library import *
 
 import concurrent.futures
 from collections import defaultdict
-
 
 #function for initializing global variables for each parallel worker process (discrete version)
 def discrete_init_domain_worker(dataset_init, current_irrep_init, by_parts_init, debug_init):
@@ -43,7 +43,7 @@ def discrete_parallel_domain_task(domain):
     
     # Compute rho standard deviation before cleanup (if cleanup is enabled)
     if dataset.cleanup_cache and dataset.field_dict is not None:
-        # Find rho prime and compute its std for this domain
+        # Find ρ prime and compute its std for this domain
         for key in dataset.field_dict.keys():
             if len(key) == 2 and key[1] == domain:
                 prime = key[0]
@@ -51,7 +51,7 @@ def discrete_parallel_domain_task(domain):
                 if hasattr(prime, '__str__') and 'ρ'==str(prime):
                     rho_data = dataset.field_dict[key]
                     rho_std_for_domain = np.std(rho_data)
-                    break  # Found rho prime, no need to continue
+                    break  # Found ρ prime, no need to continue
         
         # Free up memory by removing cached field_dict entries for this domain
         keys_to_remove = [key for key in dataset.field_dict.keys() if len(key) == 2 and key[1] == domain]
@@ -72,6 +72,7 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
     domain_neighbors: dict[[IntegrationDomain, float], int] = None # indices of neighbors of each ID at given time
     cutoff: float=6 # how many std deviations to cut off Gaussian weight functions at
     rho_scale: float=1 # density rescaling factor
+    time_sigma: float=0 # standard deviation for temporal smoothing kernel (0 = no smoothing)
     #field_dict: dict[tuple[Any], np.ndarray[float]] = None # storage of computed coarse-grained quantities: (cgp, dims, domains) -> array
     
     # Storage for rho statistics computed during parallel processing
@@ -146,17 +147,31 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
         if self.n_dimensions != 3:
             if experimental:
                 warnings.warn("Experimental method only implemented for 2D+1 systems")
-        data_slice = np.zeros(domain.shape)
+        
+        # Determine time range with buffering for smoothing
+        if self.time_sigma > 0:
+            # Calculate buffer size: 4*time_sigma in time steps should be sufficient
+            time_buffer = int(np.ceil(min(4, self.cutoff) * self.time_sigma))
+            # Extend time range for smoothing, but respect data boundaries
+            extended_min_time = max(0, domain.min_corner[-1] - time_buffer)
+            extended_max_time = min(self.scaled_pts.shape[2] - 1, domain.max_corner[-1] + time_buffer)
+            extended_times = list(range(extended_min_time, extended_max_time + 1))
+            extended_shape = domain.shape[:-1] + [len(extended_times)]
+        else:
+            extended_times = domain.times
+            extended_shape = domain.shape
+        
+        data_slice = np.zeros(extended_shape)
         if experimental:
-            pt_pos = self.scaled_pts[:, :, domain.times] / self.cg_res  # Unscaled positions
+            pt_pos = self.scaled_pts[:, :, extended_times] / self.cg_res  # Unscaled positions
             pt_pos = np.float64(pt_pos)
             weights = np.ones_like(pt_pos[:, 0, :], dtype=np.float64)
             for obs in cgp.observables:
                 obs_inds = map(lambda idx: idx.value, obs.indices)
                 #if obs.rank == 0:
-                #    data = self.data_dict[obs.string][:, 0, domain.times]
+                #    data = self.data_dict[obs.string][:, 0, extended_times]
                 #else:
-                data = self.data_dict[obs.string][:, *obs_inds, domain.times]
+                data = self.data_dict[obs.string][:, *obs_inds, extended_times]
                 weights *= data.astype(np.float64)
                 #obs_dim_ind += obs.rank
             sigma = self.scaled_sigma / self.cg_res
@@ -173,13 +188,16 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
             dist = sigma*np.sqrt(3+2*order)
             # uncomment if this isn't broken for you
             data_slice = poly_coarse_grain_time_slices(pt_pos, weights, xi, order, dist) 
-            data_slice = data_slice.reshape(domain.shape)
+            data_slice = data_slice.reshape(extended_shape)
         else:
             if self.domain_neighbors is None:
                 self.find_domain_neighbors()
-            for t in range(domain.shape[-1]):
-                time_slice = np.zeros(domain.shape[:-1])
-                t_shifted = t + domain.min_corner[-1]
+            for t in range(extended_shape[-1]):
+                time_slice = np.zeros(extended_shape[:-1])
+                if self.time_sigma > 0:
+                    t_shifted = extended_times[t]
+                else:
+                    t_shifted = t + domain.min_corner[-1]
                 if experimental:
                     # experimental method using scipy.stats.gaussian_kde
                     particles = self.domain_neighbors[domain, t_shifted]
@@ -189,9 +207,9 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
                     for obs in cgp.observables:
                         obs_inds = map(lambda idx: idx.value, obs.indices)
                         #if obs.rank == 0:
-                        #    data = self.data_dict[obs.string][:, 0, domain.times]
+                        #    data = self.data_dict[obs.string][:, 0, t_shifted]
                         #else:
-                        data = self.data_dict[obs.string][:, *obs_inds, domain.times]
+                        data = self.data_dict[obs.string][:, *obs_inds, t_shifted]
                         weights *= data.astype(np.float64)
                         #obs_dim_ind += obs.rank
                     sigma = self.scaled_sigma ** 2 / (self.cg_res ** 2)
@@ -219,9 +237,9 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
                             obs_inds = map(lambda idx: idx.value, obs.indices)
                             # print(obs, i, obs_dims[obs_dim_ind], t_shifted)
                             #if obs.rank == 0:
-                            #    data = self.data_dict[obs.string][:, 0, domain.times]
+                            #    data = self.data_dict[obs.string][:, 0, t_shifted]
                             #else:
-                            data = self.data_dict[obs.string][:, *obs_inds, domain.times]
+                            data = self.data_dict[obs.string][:, *obs_inds, t_shifted]
                             coeff *= data.astype(np.float64)
                             # print(coeff)
                         # coarse-graining this particle (one dimension at a time)
@@ -247,6 +265,18 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
 
         # rescale prime to rho=1 units
         data_slice /= self.rho_scale
+        
+        # Apply temporal smoothing as applicable
+        if self.time_sigma > 0:
+            # Apply Gaussian smoothing along time axis (last axis)
+            data_slice = gaussian_filter1d(data_slice, sigma=self.time_sigma, 
+                                           axis=-1, mode='constant')
+            
+            # Trim back to original domain size
+            time_buffer = int(np.ceil(3 * self.time_sigma))
+            start_idx = max(0, domain.min_corner[-1] - extended_times[0])
+            end_idx = start_idx + len(domain.times)
+            data_slice = data_slice[..., start_idx:end_idx]
         
         # evaluate derivatives
         orders = prime.derivative.get_spatial_orders()

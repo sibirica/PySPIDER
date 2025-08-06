@@ -265,11 +265,11 @@ def kd_poly_coarse_grain2d(points: float64[:, :],
 
 
 @jit(
-    signature_or_function="float64[:,:](float64[:, :, :], float64[:, :], float64[:, :], float64, float64)",
+    signature_or_function="float64[:,:](float64[:, :, :], float64[:, :], float64[:, :], uint8, float64)",
     nopython=True,
     cache=False,
     fastmath=False,
-    parallel=False,
+    parallel=True,
     debug=False,
     nogil=True,
     boundscheck=True
@@ -292,7 +292,7 @@ def poly_coarse_grain_time_slices(points: float64[:, :, :],
     t: uint64 = points.shape[2]  # number of time slices
 
     estimate: float64[m, t] = np.zeros((m, t))  # the estimate at the evaluation points
-    for h in range(t):
+    for h in prange(t):
         estimate[:, h] = kd_poly_coarse_grain2d(points[:, :, h], values[:, h], xi[:, :], order, distance)
 
     return estimate
