@@ -110,14 +110,14 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
                 case _:
                     raise NotImplemented
 
-    def make_domains(self, ndomains, domain_size, pad=0):
+    def make_domains(self, ndomains, domain_size, pad=0, t_pad=0):
         self.domains = []
         scaled_dims = [int(s * self.cg_res) for s in domain_size[:-1]] + [domain_size[-1]]  # self.interp_factor *
         scaled_world_size = [int(s * self.cg_res) for s in self.world_size[:-1]] + [
             self.world_size[-1]]  # self.interp_factor *
         # padding by pad in original units on spatial dims
         self.pad = pad # record the padding used
-        pads = [np.ceil(pad * self.cg_res) for s in domain_size[:-1]] + [0] 
+        pads = [np.ceil(pad * self.cg_res) for s in domain_size[:-1]] + [t_pad] 
         self.domain_size = scaled_dims
         for i in range(ndomains):
             min_corner = []
@@ -273,7 +273,7 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
         if self.time_sigma > 0:
             # Apply Gaussian smoothing along time axis (last axis)
             data_slice = gaussian_filter1d(data_slice, sigma=self.time_sigma, 
-                                           axis=-1, mode='constant')
+                                           axis=-1, mode='nearest')
             
             # Trim back to original domain size
             time_buffer = int(np.ceil(3 * self.time_sigma))

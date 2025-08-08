@@ -10,7 +10,7 @@ from .sparse_reg_bf import sparse_reg_bf, hybrid_residual
 from .z3base import FullRank, Antisymmetric, SymmetricTraceFree
     
 def identify_equations(lib_object, reg_opts, print_opts=None, threshold=1e-5, min_complexity=1,
-                       max_complexity=None, max_equations=999, timed=True, experimental=True, report_accuracy=False,
+                       max_complexity=None, max_equations=99, timed=True, experimental=True, report_accuracy=False,
                        excluded_terms=None, primes=None):
     if timed:
         start = timer()
