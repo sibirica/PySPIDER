@@ -15,15 +15,13 @@ Please check out [my dissertation](https://github.com/sibirica/PySPIDER/blob/mai
 The "tutorials" directory contains demonstrations of how to use PySPIDER to learn models for both [continuous](https://github.com/sibirica/PySPIDER/blob/main/tutorials/01_Continuous.ipynb) and [discrete](https://github.com/sibirica/PySPIDER/blob/main/tutorials/02_Discrete.ipynb) systems. 
 
 ### Installation
-PySPIDER is now available as a TestPyPI package. To install:
+PySPIDER is now available on PyPI. To install:
 
 ```bash
-pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ pySPIDER_SR
+pip install PySPIDER_SR
 ```
 
-This command installs PySPIDER_SR from TestPyPI while allowing dependencies (like numba-kdtree) to be installed from the main PyPI repository.
-
-Alternatively, you can clone this GitHub repository for development or if you prefer to install from source.
+Alternatively, you can clone this GitHub repository.
 
 ## Dependencies: 
 Python version: 3.12+

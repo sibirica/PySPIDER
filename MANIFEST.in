@@ -1,0 +1,23 @@
+include README.md
+include LICENSE
+recursive-include src/PySPIDER *.py
+recursive-exclude src/PySPIDER/*/tests *
+recursive-exclude src/PySPIDER/*/archive *
+recursive-exclude src/PySPIDER/*/Matt *
+recursive-exclude src/PySPIDER/*/LJ *
+recursive-exclude src/PySPIDER/*/.ipynb_checkpoints *
+recursive-exclude src/PySPIDER/*/*/.ipynb_checkpoints *
+exclude src/PySPIDER/discrete/test_time_smoothing.py
+exclude src/PySPIDER/commons/greedy_rounding_test.py
+global-exclude *.ipynb
+global-exclude *.mp4
+global-exclude *.npy
+global-exclude *.npz
+global-exclude *.mat
+global-exclude *.csv
+global-exclude *.eps
+global-exclude *.diff
+global-exclude .DS_Store
+global-exclude __pycache__
+global-exclude *.py[cod]
+global-exclude .ipynb_checkpoints
