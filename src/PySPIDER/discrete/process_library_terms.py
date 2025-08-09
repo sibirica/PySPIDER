@@ -1,14 +1,15 @@
 import warnings
-from typing import Any
+
 from dataclasses import dataclass
 
 import numpy as np
 import scipy
 from scipy.stats._stats import gaussian_kernel_estimate
 from scipy.ndimage import gaussian_filter1d
+
 # uncomment the next line if it isn't broken for you
 # coarse_grain_time_slices,
-from .coarse_grain_utils import poly_coarse_grain_time_slices 
+from .coarse_grain_utils import poly_coarse_grain_time_slices, periodic_poly_coarse_grain_time_slices 
 
 from ..commons.process_library_terms import (
     AbstractDataset, IntegrationDomain, LibraryData, int_by_parts, diff
@@ -96,6 +97,8 @@ class SRDataset(AbstractDataset):
     rho_scale: float = 1
     # standard deviation for temporal smoothing kernel (0 = no smoothing)
     time_sigma: float = 0
+    # whether to use periodic boundary conditions for coarse-graining
+    wrap: bool = False
     # field_dict: dict[tuple[Any], np.ndarray[float]] = None 
     # storage of computed coarse-grained quantities: (cgp, dims, domains) -> array
     
@@ -234,10 +237,16 @@ class SRDataset(AbstractDataset):
                 (yy / self.cg_res).ravel(),
             ]).T
             dist = sigma*np.sqrt(3+2*order)
-            # uncomment if this isn't broken for you
-            data_slice = poly_coarse_grain_time_slices(
-                pt_pos, weights, xi, order, dist
-            ) 
+            if self.wrap:
+                # Use periodic boundary conditions
+                box_lengths = np.array([self.world_size[0], self.world_size[1]], dtype=np.float64)
+                data_slice = periodic_poly_coarse_grain_time_slices(
+                    pt_pos, weights, xi, order, dist, box_lengths
+                )
+            else:
+                data_slice = poly_coarse_grain_time_slices(
+                    pt_pos, weights, xi, order, dist
+                ) 
             data_slice = data_slice.reshape(extended_shape)
         else:
             if self.domain_neighbors is None:
