@@ -1,6 +1,7 @@
 import numpy as np
 from numpy import polynomial as p
 
+
 def weight_leg(q):
     # return qth Legendre polynomial as a polynomial object
     orders = np.zeros(q + 1)
@@ -17,5 +18,5 @@ def weight_poly(m):
 
 def weight_1d(m, q, k, dx):
     poly = weight_leg(q) * weight_poly(m)
-    poly = poly / dx ** k
+    poly = poly / dx**k
     return poly.deriv(k)

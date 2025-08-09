@@ -46,5 +46,8 @@ src/PySPIDER_SR/discrete/LJ
 Julia/Sysimage.so
 archive/
 
+# documentation for Cursor agents
+cursor_docs/
+
 # Virtual environment
 .venv

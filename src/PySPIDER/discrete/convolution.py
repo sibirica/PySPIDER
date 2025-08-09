@@ -8,7 +8,7 @@ def coarse_grain(binned, sigma, truncate=8, wrap=True):
     sigma_vector = np.zeros(shape=(len(binned.shape), 1))
     sigma_vector[0:2] = sigma
     if wrap:
-        smoothed = gaussian_filter(binned, sigma_vector, mode='wrap', truncate=truncate)
+        smoothed = gaussian_filter(binned, sigma_vector, mode="wrap", truncate=truncate)
     else:
         smoothed = gaussian_filter(binned, sigma_vector, truncate=truncate)
     return smoothed
