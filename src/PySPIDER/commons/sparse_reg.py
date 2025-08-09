@@ -6,8 +6,12 @@ from timeit import default_timer as timer
 from .TInvPower import TInvPower
 #from .Kaczmarz import *
 
-def sparse_reg(theta, threshold='AIC', brute_force=True, delta=1e-10, epsilon=1e-2, gamma=2,
-               verbose=False, n_terms=-1, char_sizes=None, row_norms=None, valid_single=None, avoid=None, subinds=None, anchor_norm=None, method="stepwise", max_k=10, start_k=20, inhomog=False, inhomog_col=None):
+def sparse_reg(
+    theta, threshold='AIC', brute_force=True, delta=1e-10, epsilon=1e-2, gamma=2,
+    verbose=False, n_terms=-1, char_sizes=None, row_norms=None, 
+    valid_single=None, avoid=None, subinds=None, anchor_norm=None, 
+    method="stepwise", max_k=10, start_k=20, inhomog=False, inhomog_col=None
+):
     # compute sparse regression on Theta * xi = 0
     # Theta: matrix of integrated terms
     # char_sizes: vector of characteristic term sizes (per column)
@@ -15,8 +19,10 @@ def sparse_reg(theta, threshold='AIC', brute_force=True, delta=1e-10, epsilon=1e
     # valid_single: vector of 1s/0s (valid single term model/not)
     # avoid: coefficient vectors to be orthogonal to
     # and a lot more not described above
-    # NEW ARGUMENTS: start_k - used in method='hybrid', power method at k=start_k and then stepwise reduction the rest of the way
-    # inhomog - for inhomogeneous regression, paired with inhomog_col: which term to use as b.
+    # NEW ARGUMENTS: start_k - used in method='hybrid', power method at k=start_k 
+    # and then stepwise reduction the rest of the way
+    # inhomog - for inhomogeneous regression, paired with inhomog_col: 
+    # which term to use as b.
     # note: only brute force stepwise method implemented for inhomogeneous regression
 
     if avoid is None:
@@ -28,12 +34,15 @@ def sparse_reg(theta, threshold='AIC', brute_force=True, delta=1e-10, epsilon=1e
             # if rownm != 0:
             #    Theta[row, :] *= (row_norms[row]/rownm)
             theta[row, :] *= row_norms[row]
-    if char_sizes is not None:  # do this here: char_sizes are indexed by full column set
+    # do this here: char_sizes are indexed by full column set
+    if char_sizes is not None:
         char_sizes = np.array(char_sizes)
         # char_sizes /= np.max(char_sizes)
         for term in range(len(char_sizes)):
-            theta[:, term] = theta[:, term] / char_sizes[term]  # renormalize by characteristic size
-    # do this exactly here: when we divide by Thetanm later, we work with the normalized columns
+            # renormalize by characteristic size
+            theta[:, term] = theta[:, term] / char_sizes[term]
+    # do this exactly here: when we divide by Thetanm later, we work with the 
+    # normalized columns
     if anchor_norm is None:
         thetanm = np.linalg.norm(theta)
     else:
@@ -54,11 +63,13 @@ def sparse_reg(theta, threshold='AIC', brute_force=True, delta=1e-10, epsilon=1e
             valid_single = valid_single[subinds]
     m = 100 * theta.shape[0]
     for xi in avoid:
-        theta = np.vstack([theta, m * np.transpose(xi)])  # Acts as a constraint - weights should be orthogonal to Xi
+        # Acts as a constraint - weights should be orthogonal to Xi
+        theta = np.vstack([theta, m * np.transpose(xi)])
 
     h, w = theta.shape
     if anchor_norm is None:
-        thetanm /= np.sqrt(w)  # scale norm of Theta by square root of # columns to fix scaling of Theta@Xi vs Thetanm
+        # scale norm of Theta by square root of # columns to fix scaling of Theta@Xi vs Thetanm
+        thetanm /= np.sqrt(w)
     beta = w / h  # aspect ratio
 
     if valid_single is None:
@@ -112,14 +123,16 @@ def sparse_reg(theta, threshold='AIC', brute_force=True, delta=1e-10, epsilon=1e
         with open(save_loc, 'w') as save_file:
              np.savetxt(save_file, sigma_in, delimiter=",")
         batch = True
-        if batch: # run all k's together to reduce amount of time Julia wastes on imports
+        # run all k's together to reduce amount of time Julia wastes on imports
+        if batch:
             load_template = 'temp/output_@.csv'
             xis, ubs, lbs = batch_discrete_sr(max_k, save_loc, load_template)
             for i in range(max_k):
                 k = max_k - i
                 xi = xis[i]
                 if verbose:
-                    print("k:", k, "xi:", xi, "dual bound:", ubs[i], "primal bound:", lbs[i])
+                    print("k:", k, "xi:", xi, "dual bound:", ubs[i], 
+                          "primal bound:", lbs[i])
                 lambdas[i] = np.linalg.norm(theta @ xi) / thetanm
         else: 
             for i in range(max_k):
@@ -188,21 +201,27 @@ def sparse_reg(theta, threshold='AIC', brute_force=True, delta=1e-10, epsilon=1e
                         if inhomog:
                             subtheta = theta[:, smallinds_copy == 0]
                             xi_copy, _, _, _ = np.linalg.lstsq(subtheta, b, rcond=None)
-                            res_inc[p_ind] = np.linalg.norm(b - subtheta @ xi_copy) / thetanm / lambd
+                            res_inc[p_ind] = (np.linalg.norm(b - subtheta @ xi_copy) / 
+                                              thetanm / lambd)
                         else:
-                            _, _, v = np.linalg.svd(theta[:, smallinds_copy == 0], full_matrices=True)
+                            _, _, v = np.linalg.svd(
+                                theta[:, smallinds_copy == 0], full_matrices=True
+                            )
                             v = v.transpose()
                             xi_copy[smallinds_copy == 0] = v[:, -1]
                             # noinspection PyUnboundLocalVariable
-                            res_inc[p_ind] = np.linalg.norm(theta @ xi_copy) / thetanm / lambd
+                            res_inc[p_ind] = (np.linalg.norm(theta @ xi_copy) / 
+                                              thetanm / lambd)
                 else:
                     col = theta[:, p_ind]
                     # project out other columns
                     for q_ind in range(w):
                         if (p_ind != q_ind) and smallinds[q_ind] == 0:
                             other_col = theta[:, q_ind]
-                            col = col - np.dot(col, other_col) / np.linalg.norm(other_col) ** 2 * other_col
-                    # product[p_ind] = np.linalg.norm(xi[p_ind]*col)/np.linalg.norm(Theta)
+                            col = col - (np.dot(col, other_col) / 
+                                         np.linalg.norm(other_col) ** 2 * other_col)
+                    # product[p_ind] = (np.linalg.norm(xi[p_ind]*col) / 
+                    #                   np.linalg.norm(Theta))
                     product[p_ind] = np.linalg.norm(xi[p_ind] * col)
             if brute_force:
                 #if inhomog: # prevent the required column from being dropped
@@ -215,22 +234,28 @@ def sparse_reg(theta, threshold='AIC', brute_force=True, delta=1e-10, epsilon=1e
                     # print('res_inc:', res_inc)
                     if threshold != "multiplicative":
                         print("i", i, "lambda", lambd)  # for pareto plot
-                if (y <= gamma) or (threshold != "threshold") or (lambd <= delta) or (n_terms > 1):
+                if ((y <= gamma) or (threshold != "threshold") or 
+                    (lambd <= delta) or (n_terms > 1)):
                     smallinds[ii] = 1
                     xi[ii] = 0
                     if inhomog:
                         subtheta = theta[:, smallinds == 0]
-                        xi[smallinds == 0], _, _, _ = np.linalg.lstsq(subtheta, b, rcond=None)
+                        xi[smallinds == 0], _, _, _ = np.linalg.lstsq(
+                            subtheta, b, rcond=None
+                        )
                         xi[inhomog_col] = -1
                     else:
-                        _, _, v = np.linalg.svd(theta[:, smallinds == 0], full_matrices=True)
+                        _, _, v = np.linalg.svd(
+                            theta[:, smallinds == 0], full_matrices=True
+                        )
                         v = v.transpose()
                         xi[smallinds == 0] = v[:, -1]
                     lambd = np.linalg.norm(theta @ xi) / thetanm
                     lambdas[i + 1] = lambd
                     if sum(smallinds == 0) == 1:
                         margins[-1] = np.inf
-                        if inhomog: # the normal last iteration is never run since one term cannot be kept
+                        # the normal last iteration is never run since one term cannot be kept
+                        if inhomog:
                             lambdas[-1] = np.linalg.norm(b) / thetanm
                         break
                 else:
@@ -262,7 +287,8 @@ def sparse_reg(theta, threshold='AIC', brute_force=True, delta=1e-10, epsilon=1e
                 if verbose:
                     print("lambda:", lambd, " margin:", margin)
                 margins[i] = margin
-                if (margin > gamma) and (lambd > delta) and (threshold == "threshold") and (n_terms == -1):
+                if ((margin > gamma) and (lambd > delta) and 
+                    (threshold == "threshold") and (n_terms == -1)):
                     print("ii:", ii)
                     xi = xi_old
                     print("xi:", xi)
@@ -300,21 +326,26 @@ def sparse_reg(theta, threshold='AIC', brute_force=True, delta=1e-10, epsilon=1e
         xi = xis[i_sm]  # stopping_point
         lambd = np.linalg.norm(theta @ xi) / thetanm
     else: #if threshold == 'threshold'
-        #if n_terms > 1:  # Don't think this line does anything functionally but I also don't really use this
+        # if n_terms > 1:  # Don't think this line does anything functionally 
+        # but I also don't really use this
         #    i_mar = sum(margins > 0) - n_terms
-        lambdas[0] = lambdas[1]  # FIXME DUCT TAPE since I don't know what's going on (basically first lambda is big)
+        # FIXME DUCT TAPE since I don't know what's going on (basically first lambda is big)
+        lambdas[0] = lambdas[1]
         gt_delta = (lambdas > delta)
         large_margin = (margins > gamma)
-        if not any(gt_delta) or not any(large_margin): # didn't trip the criteria while sparsifying
+        # didn't trip the criteria while sparsifying
+        if not any(gt_delta) or not any(large_margin):
             i_mar = -1 # select sparsest term
         else: # select first term which tripped the criteria
-            i_mar = max(np.argmax(gt_delta) - 1, np.argmax(large_margin))
+            i_mar = max(np.argmax(gt_delta) - 1, 
+                        np.argmax(large_margin))
         if verbose:
             print(lambdas > delta)
             print(margins > gamma)
             print("i_mar:", i_mar)
         xi = xis[i_mar]  # stopping_point
-        if inhomog: # might give wrong results for a 2-term library(?) but that won't happen in practice
+        # might give wrong results for a 2-term library(?) but that won't happen in practice
+        if inhomog:
             lambd = lambdas[i_mar]
         else:
             lambd = np.linalg.norm(theta @ xi) / thetanm
@@ -322,7 +353,8 @@ def sparse_reg(theta, threshold='AIC', brute_force=True, delta=1e-10, epsilon=1e
     if n_terms > 1:
         i_mar = w - n_terms
         xi = xis[i_mar]  # stopping_point
-        if inhomog: # might give wrong results for a 2-term library(?) but that won't happen in practice
+        # might give wrong results for a 2-term library(?) but that won't happen in practice
+        if inhomog:
             lambd = lambdas[i_mar]
         else:
             lambd = np.linalg.norm(theta @ xi) / thetanm
@@ -355,7 +387,8 @@ def sparse_reg(theta, threshold='AIC', brute_force=True, delta=1e-10, epsilon=1e
     # noinspection PyUnboundLocalVariable
     return xi, lambd, best_term, lambda1
 
-def regress(Theta, col_numbers, col_weights, normalization=None):  # regression on a fixed set of terms
+def regress(Theta, col_numbers, col_weights, normalization=None):
+    # regression on a fixed set of terms
     h, w = Theta.shape
     if normalization is None:
         thetanm = np.linalg.norm(Theta[:, 0])
@@ -379,7 +412,8 @@ def regress(Theta, col_numbers, col_weights, normalization=None):  # regression 
     for i in range(len(xi)):
         nms[i] = np.linalg.norm(Theta_copy[:, i] * xi[i])
     thetanm = np.max(nms) # relative residual is max ||Q_ic_i||
-    lambd = np.linalg.norm(Theta_copy @ xi)/thetanm # changed to relative residual
+    # changed to relative residual
+    lambd = np.linalg.norm(Theta_copy @ xi)/thetanm
     xi = xi / col_weights
     if -min(xi) > max(xi):  # ensure vectors are "positive"
         xi = -xi
@@ -392,7 +426,8 @@ def AIC(lambd, k, m, add_correction=True):
     rss = lambd ** 2
     aic = 2 * k + m * np.log(rss / m)
     if add_correction:
-        correction_term = (2 * (k + 1) * (k + 2)) / max(m - k - 2, 1)  # In case k == m
+        # In case k == m
+        correction_term = (2 * (k + 1) * (k + 2)) / max(m - k - 2, 1)
         aic += correction_term
     return aic
 
@@ -409,12 +444,14 @@ def discrete_sr(k, save_loc, load_loc):
     #    subprocess.check_call(f'julia interface.jl {k} "{save_loc}" "{load_loc}"')
     #except subprocess.CalledProcessError as e:
     #    print(e.output)
-    ### apparently Popen.communicate is a more standard way to pipe io than saving to file
-    #with open('julia_path.config', 'r') as fj: # format: absolute path of interface.jl in quotes
+    # apparently Popen.communicate is a more standard way to pipe io than saving to file
+    # with open('julia_path.config', 'r') as fj: 
+    # format: absolute path of interface.jl in quotes
     #    path = fj.readline()
     start = timer()
     path = '"../Julia/ScalableSPCA.jl/interface.jl"'
-    _run_command(f'julia -q -J../Julia/Sysimage.so {path} {k} "{save_loc}" "{load_loc}"') # see below
+    # see below
+    _run_command(f'julia -q -J../Julia/Sysimage.so {path} {k} "{save_loc}" "{load_loc}"')
 
     # load csv from load_loc
     with open(load_loc, 'r') as f:
@@ -423,7 +460,10 @@ def discrete_sr(k, save_loc, load_loc):
         ub = float(ublb[0])
         lb = float(ublb[1])
         line2 = f.readline()
-        xi_split = [float(string.replace("\n", "").strip()) for string in line2.split(',')]
+        xi_split = [
+            float(string.replace("\n", "").strip()) 
+            for string in line2.split(',')
+        ]
         xi = np.array(xi_split)
         
     time = timer() - start
@@ -433,7 +473,10 @@ def discrete_sr(k, save_loc, load_loc):
 def batch_discrete_sr(max_k, save_loc, load_template):
     start = timer()
     path = '"../Julia/ScalableSPCA.jl/batch_interface.jl"'
-    _run_command(f'julia -q -J../Julia/Sysimage.so {path} {max_k} "{save_loc}" "{load_template}"') # see below
+    # see below
+    _run_command(
+        f'julia -q -J../Julia/Sysimage.so {path} {max_k} "{save_loc}" "{load_template}"'
+    )
 
     xis = []
     ubs = []
@@ -448,7 +491,10 @@ def batch_discrete_sr(max_k, save_loc, load_template):
             ub = float(ublb[0])
             lb = float(ublb[1])
             line2 = f.readline()
-            xi_split = [float(string.replace("\n", "").strip()) for string in line2.split(',')]
+            xi_split = [
+                float(string.replace("\n", "").strip()) 
+                for string in line2.split(',')
+            ]
             xi = np.array(xi_split)
         xis.append(xi)
         ubs.append(ub)

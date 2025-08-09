@@ -274,7 +274,8 @@ def analyze_smoothing_effect(results):
     # Mean and std of rho fields
     print(f"Field statistics:")
     print(
-        f"Unsmoothed - mean: {np.mean(rho_unsmoothed):.6f}, std: {np.std(rho_unsmoothed):.6f}"
+        (f"Unsmoothed - mean: {np.mean(rho_unsmoothed):.6f}, "
+         f"std: {np.std(rho_unsmoothed):.6f}")
     )
     print(
         f"Smoothed - mean: {np.mean(rho_smoothed):.6f}, std: {np.std(rho_smoothed):.6f}"
@@ -298,16 +299,19 @@ def analyze_smoothing_effect(results):
     print(f"RMS temporal derivative (unsmoothed): {rms_dt_rho_vx_unsmoothed:.6f}")
     print(f"RMS temporal derivative (smoothed): {rms_dt_rho_vx_smoothed:.6f}")
     print(
-        f"Smoothing factor: {rms_dt_rho_vx_unsmoothed / rms_dt_rho_vx_smoothed:.2f}x reduction"
+        (f"Smoothing factor: "
+         f"{rms_dt_rho_vx_unsmoothed / rms_dt_rho_vx_smoothed:.2f}x reduction")
     )
 
     # Mean and std of rho[v_x] fields
     print(f"Field statistics:")
     print(
-        f"Unsmoothed - mean: {np.mean(rho_vx_unsmoothed):.6f}, std: {np.std(rho_vx_unsmoothed):.6f}"
+        (f"Unsmoothed - mean: {np.mean(rho_vx_unsmoothed):.6f}, "
+         f"std: {np.std(rho_vx_unsmoothed):.6f}")
     )
     print(
-        f"Smoothed - mean: {np.mean(rho_vx_smoothed):.6f}, std: {np.std(rho_vx_smoothed):.6f}"
+        (f"Smoothed - mean: {np.mean(rho_vx_smoothed):.6f}, "
+         f"std: {np.std(rho_vx_smoothed):.6f}")
     )
 
     # Correlation between rho[v_x] fields

@@ -10,7 +10,9 @@ from collections import defaultdict
 
 import concurrent.futures
 
-from .z3base import highest_index, Irrep, FullRank, SymmetricTraceFree, Antisymmetric, LiteralIndex
+from .z3base import (
+    highest_index, Irrep, FullRank, SymmetricTraceFree, Antisymmetric, LiteralIndex
+)
 from .library import LibraryTerm, ConstantTerm, Observable, ES_prod
 from .weight import weight_1d
 
@@ -21,7 +23,10 @@ class IntegrationDomain(object):
         # min_corner - min coordinates in each dimension; sim. max_corner
         self.min_corner = min_corner
         self.max_corner = max_corner
-        self.shape = [max_c - min_c + 1 for (min_c, max_c) in zip(self.min_corner, self.max_corner)]
+        self.shape = [
+            max_c - min_c + 1 
+            for (min_c, max_c) in zip(self.min_corner, self.max_corner)
+        ]
         self.times = list(range(min_corner[-1], max_corner[-1] + 1))
 
     def __repr__(self):
@@ -32,8 +37,10 @@ class IntegrationDomain(object):
         return hash(tuple(self.min_corner + self.max_corner))
 
     def distance(self, pt):
-        return max(self.line_dist(coord, i) for i, coord in enumerate(pt)) # L_0 norm distance
-        # return np.linalg.norm([self.line_dist(coord, dim) for i, coord in enumerate(pt)]) # L_2 norm distance
+        # L_0 norm distance
+        return max(self.line_dist(coord, i) for i, coord in enumerate(pt))
+        # return np.linalg.norm([self.line_dist(coord, dim) for i, coord in enumerate(pt)]) 
+        # L_2 norm distance
 
     def line_dist(self, coord, dim):
         return max(0, self.min_corner[dim] - coord, coord - self.max_corner[dim])
@@ -90,7 +97,8 @@ class Weight(object): # scalar-valued Legendre polynomial weight function (may r
     __rmul__ = __mul__
 
     def __repr__(self):
-        return f"Weight(m={self.m}, q={self.q}, k={self.k}, coeff={self.scale}, dxs={self.dxs})"
+        return (f"Weight(m={self.m}, q={self.q}, k={self.k}, "
+                f"coeff={self.scale}, dxs={self.dxs})")
 
     def __hash__(self):
         return hash(self.__repr__)
@@ -475,7 +483,8 @@ class AbstractDataset(object): # template for structure of all data associated w
         for prime in term.primes:
         #    if debug:
         #        print(f"LibraryPrime {prime}")
-            if self.cache_primes and (prime, domain) in self.field_dict.keys():  # field is "cached"
+            # field is "cached"
+            if self.cache_primes and (prime, domain) in self.field_dict.keys():
                 data_slice = self.field_dict[prime, domain]
             else:
                 data_slice = self.eval_prime(prime, domain)

@@ -7,36 +7,53 @@ import random # for test-train sampling
 from .TInvPower import TInvPower
 from .sr_utils import smallest_sv, solve
 
-# new approach: for modularity, pass objects handling separate steps of the regression with their own params
+# new approach: for modularity, pass objects handling separate steps of the 
+# regression with their own params
 
-# note: in the future it might be cleaner to implement things like method, iter_direction, etc. as enums
-# also, not a good idea to use backward-forward=false with combinatorial start as it will stop at max_k
+# note: in the future it might be cleaner to implement things like method, 
+# iter_direction, etc. as enums
+# also, not a good idea to use backward-forward=false with combinatorial start 
+# as it will stop at max_k
 
 # rich regression output object
 class RegressionResult(object):
-    def __init__(self, xi, lambd, best_term, lambda1, all_xis=None, all_lambdas=None, 
-                 lambda1_test=None, lambda_test = None, all_lambdas_test=None, sublibrary=None):
+    def __init__(
+        self, xi, lambd, best_term, lambda1, all_xis=None, all_lambdas=None, 
+        lambda1_test=None, lambda_test=None, all_lambdas_test=None, 
+        sublibrary=None
+    ):
         self.xi = xi
         self.lambd = lambd
         self.lambda_test = lambda_test
         self.best_term = best_term
         self.lambda1 = lambda1
         self.lambda1_test = lambda1_test
-        self.all_xis = all_xis # reminder: row i of these arrays corresponds to i+1 term model
+        # reminder: row i of these arrays corresponds to i+1 term model
+        self.all_xis = all_xis
         self.all_lambdas = all_lambdas
         self.all_lambdas_test = all_lambdas_test
-        self.sublibrary = sublibrary # list of actual terms corresponding to this sublibrary - can also be set later
+        # list of actual terms corresponding to this sublibrary - can also be set later
+        self.sublibrary = sublibrary
 
-class Scaler(object): # pre- and postprocessing by scaling/nondimensionalizing data
-    def __init__(self, sub_inds, char_sizes, row_norms=None, unit_rows=False, train_fraction=1): # note: char_sizes should always be set
+# pre- and postprocessing by scaling/nondimensionalizing data
+class Scaler(object):
+    def __init__(
+        self, sub_inds, char_sizes, row_norms=None, unit_rows=False, 
+        train_fraction=1
+    ):
+        # note: char_sizes should always be set
         self.full_w = len(char_sizes)
-        self.sub_inds = sub_inds if sub_inds is not None else list(range(self.full_w)) # default is keeping all indices
+        # default is keeping all indices
+        self.sub_inds = (sub_inds if sub_inds is not None 
+                         else list(range(self.full_w)))
         self.w = len(self.sub_inds)
         # useful if we want to reuse a Scaler except with different sub_inds
-        #self.full_cs = np.array(char_sizes) if char_sizes is not None else np.ones(shape=(self.w,))
+        # self.full_cs = (np.array(char_sizes) if char_sizes is not None 
+        #                 else np.ones(shape=(self.w,)))
         #self.char_sizes = self.full_cs[self.sub_inds]
         self.char_sizes = np.array(char_sizes)
-        self.row_norms = np.array(row_norms) if row_norms is not None else None
+        self.row_norms = (np.array(row_norms) if row_norms is not None 
+                          else None)
         self.unit_rows = unit_rows
         
         self.train_fraction = train_fraction # test-train split fraction
@@ -46,10 +63,12 @@ class Scaler(object): # pre- and postprocessing by scaling/nondimensionalizing d
         self.w = len(self.sub_inds)
         #self.char_sizes = self.full_cs[self.sub_inds]
     
-    def index(self, col): # find the full indexing to sub_inds conversion of a given column number
+    def index(self, col):
+        # find the full indexing to sub_inds conversion of a given column number
         return self.sub_inds.index(col) if col is not None else None
     
-    def norm_col(self, theta, col): # compute norm of given column after nondimensionalization
+    def norm_col(self, theta, col):
+        # compute norm of given column after nondimensionalization
         #idx_col = self.index(col)
         #return np.linalg.norm(theta[:, idx_col])/self.full_cs[idx_col]
         return np.linalg.norm(theta[:, col])/self.full_cs[col]
@@ -58,7 +77,8 @@ class Scaler(object): # pre- and postprocessing by scaling/nondimensionalizing d
     #     theta = np.copy(theta)  # avoid bugs where array is modified in place
     #     theta = theta[:, self.sub_inds]
     #     for term in range(len(self.char_sizes)):
-    #         theta[:, term] /= self.char_sizes[term]  # renormalize by characteristic size
+    #         # renormalize by characteristic size
+    #         theta[:, term] /= self.char_sizes[term]
     #     if self.row_norms is not None:
     #         for row in range(len(self.row_norms)):
     #             theta[row, :] *= self.row_norms[row]
@@ -72,7 +92,8 @@ class Scaler(object): # pre- and postprocessing by scaling/nondimensionalizing d
         # note that this function now runs before sampling sub_inds columns in theta
         theta = np.copy(theta)  # avoid bugs where array is modified in place
         for term in range(len(self.char_sizes)):
-            theta[:, term] /= self.char_sizes[term]  # renormalize by characteristic size
+            # renormalize by characteristic size
+            theta[:, term] /= self.char_sizes[term]
         if self.row_norms is not None:
             for row in range(len(self.row_norms)):
                 theta[row, :] *= self.row_norms[row]
@@ -102,7 +123,10 @@ class Scaler(object): # pre- and postprocessing by scaling/nondimensionalizing d
         model *= self.char_sizes[self.sub_inds]  # renormalize by characteristic size
         return model
         
-    def postprocess_multi_term(self, xi, lambd, test_train_ratio=None, lambda_test=None, verbose=False): # Xi postprocessing
+    def postprocess_multi_term(
+        self, xi, lambd, test_train_ratio=None, lambda_test=None, verbose=False
+    ):
+        # Xi postprocessing
         full_xi = np.zeros(shape=(self.full_w,))
         #print('old xi', xi)
         xi = xi / self.char_sizes[self.sub_inds]  # renormalize by char. size
@@ -115,16 +139,22 @@ class Scaler(object): # pre- and postprocessing by scaling/nondimensionalizing d
         if verbose:
             print("final xi", full_xi)
             print("final lambda:", lambd)
-        return full_xi, lambd, lambda_test/np.sqrt(test_train_ratio) if lambda_test else None 
+        return (full_xi, lambd, 
+                lambda_test/np.sqrt(test_train_ratio) if lambda_test else None) 
         #/norm # already normalized in multi-term regression
         
-    def postprocess_single_term(self, best_term, lambda1, test_train_ratio=None, lambda1_test=None, verbose=False):
+    def postprocess_single_term(
+        self, best_term, lambda1, test_train_ratio=None, lambda1_test=None, 
+        verbose=False
+    ):
         if verbose:
             print("final lambda1:", lambda1)
-        return self.sub_inds[best_term], lambda1, lambda1_test/np.sqrt(test_train_ratio) if lambda1_test else None
+        return (self.sub_inds[best_term], lambda1, 
+                lambda1_test/np.sqrt(test_train_ratio) if lambda1_test else None)
     
     def __repr__(self):
-        return f"Scaler(sub_inds={self.sub_inds}, char_sizes={self.char_sizes}, row_norms={self.row_norms})"
+        return (f"Scaler(sub_inds={self.sub_inds}, char_sizes={self.char_sizes}, "
+                f"row_norms={self.row_norms})")
 
 class Initializer(object): # selecting initial guess
     def __init__(self, method, start_k=None):
@@ -146,11 +176,13 @@ class Initializer(object): # selecting initial guess
     
     def make_model(self, theta, verbose):
         if self.method == 'combinatorial':
-            # note - can also be used to initialize iteration from full library using start_k>=w
+            # note - can also be used to initialize iteration from full library 
+            # using start_k>=w
             w = theta.shape[1]
             inds = list(range(w))
             best_lambd = np.inf
-            combos = combinations(inds, self.start_k) if self.start_k<len(inds) else (inds,)
+            combos = (combinations(inds, self.start_k) 
+                      if self.start_k < len(inds) else (inds,))
             for combo in combos: # return all combinations of start_k terms
                 if self.inhomog and self.inhomog_col not in combo:
                     continue
@@ -163,10 +195,14 @@ class Initializer(object): # selecting initial guess
             iter_direction = "backward"
         elif self.method == 'power':
             sigma_in = theta.T @ theta 
-            xi, mu, it = TInvPower(sigma_in, self.start_k, mu0=None, verbose=False, forced_col=self.inhomog_col)
+            xi, mu, it = TInvPower(
+                sigma_in, self.start_k, mu0=None, verbose=False, 
+                forced_col=self.inhomog_col
+            )
             if verbose:
                 print("mu:", mu, ", # of iterations: ", it)
-            lambd = np.linalg.norm(theta @ xi) # always return absolute residual until postprocessing
+            # always return absolute residual until postprocessing
+            lambd = np.linalg.norm(theta @ xi)
             iter_direction = "forward"
         if self.inhomog: # normalization with b term = -1
             lambd /= np.abs(xi[self.inhomog_col])
@@ -180,22 +216,30 @@ class Initializer(object): # selecting initial guess
         return f"Initializer(method={self.method}, start_k={self.start_k})"
 
 class ModelIterator(object): # selecting next iterate and enforcing stopping condition
-    def __init__(self, max_k, backward_forward=True, max_passes=10, use_best_solution=True): #threshold, brute_force=True
+    def __init__(
+        self, max_k, backward_forward=True, max_passes=10, use_best_solution=True
+    ):
+        # threshold, brute_force=True
         self.max_k = max_k # do not try models with more than max_k terms
         #self.threshold = threshold # threshold object
         self.backward_forward = backward_forward
-        #self.brute_force = brute_force # sadly non-brute force seems to drop key terms in dominant balance
+        # self.brute_force = brute_force 
+        # sadly non-brute force seems to drop key terms in dominant balance
         self.inhomog = None
-        self.inhomog_col = None # note: should be set to converted index in sublibrary
+        # note: should be set to converted index in sublibrary
+        self.inhomog_col = None
 
         # state variables
         self.k = None # current number of terms
         self.direction = None # forward: dropping terms; backward: adding terms
         self.terms = None # indices of non-zero terms
-        #self.has_reversed = False # True if backward-forward iteration has already turned around
+        # self.has_reversed = False 
+        # True if backward-forward iteration has already turned around
         self.state = None # most recently saved set of xis
-        #self.stopped_early = False # may want to set True if early stopping so selection is clear
-        self.max_passes = max_passes # to prevent infinite loop from ever occuring
+        # self.stopped_early = False 
+        # may want to set True if early stopping so selection is clear
+        # to prevent infinite loop from ever occuring
+        self.max_passes = max_passes
         self.passes = 0
 
         self.use_best_solution = use_best_solution
@@ -205,7 +249,12 @@ class ModelIterator(object): # selecting next iterate and enforcing stopping con
         self.best_test_lambdas = None
         
     def __repr__(self):
-        return f"ModelIterator(max_k={self.max_k}, backward_forward={self.backward_forward}, max_passes={self.max_passes}, inhomog={self.inhomog}, inhomog_col={self.inhomog_col}, k={self.k}, direction={self.direction}, terms={self.terms}, passes={self.passes})"
+        return (f"ModelIterator(max_k={self.max_k}, "
+                f"backward_forward={self.backward_forward}, "
+                f"max_passes={self.max_passes}, inhomog={self.inhomog}, "
+                f"inhomog_col={self.inhomog_col}, k={self.k}, "
+                f"direction={self.direction}, terms={self.terms}, "
+                f"passes={self.passes})")
         
         
     def reset(self, k, max_k, direction): # reset state variables
@@ -244,9 +293,11 @@ class ModelIterator(object): # selecting next iterate and enforcing stopping con
         self.inhomog = inhomog
         self.inhomog_col = scaler.index(inhomog_col)
     
-    def save_state(self, xis, lambdas, test_lambdas, verbose): # set the internal state & update best solutions found so far
+    def save_state(self, xis, lambdas, test_lambdas, verbose):
+        # set the internal state & update best solutions found so far
         self.state = np.copy(xis)
-        if self.best_state is None or not self.use_best_solution: # no values have been set yet or we are just saving last state
+        # no values have been set yet or we are just saving last state
+        if self.best_state is None or not self.use_best_solution:
             if verbose:
                 print("Setting best state for the first time...")
             self.best_state = np.copy(xis)
@@ -254,9 +305,11 @@ class ModelIterator(object): # selecting next iterate and enforcing stopping con
             self.best_test_lambdas = np.copy(test_lambdas)
         else: # model_iterator returns the best solution up to this point
             for i in range(xis.shape[0]): # update each row individually
-                if self.best_lambdas[i]>lambdas[i]: # better solution has been found for this sparsity
+                # better solution has been found for this sparsity
+                if self.best_lambdas[i]>lambdas[i]:
                     if verbose:
-                        print(f"Best lambda for k={i+1}: {self.best_lambdas[i]} -> {lambdas[i]}")
+                        print(f"Best lambda for k={i+1}: "
+                              f"{self.best_lambdas[i]} -> {lambdas[i]}")
                         #print(f"Best xi for k={i}: {self.best_state[i]} -> {xis[i]}")
                     self.best_state[i, :] = xis[i]
                     self.best_lambdas[i] = lambdas[i]
@@ -298,7 +351,8 @@ class ModelIterator(object): # selecting next iterate and enforcing stopping con
         return xi, lambd, self.k
     
     def drop(self, theta, xi, verbose, represent):
-        s = np.zeros(shape=(len(self.terms), 1)) # term with lowest score will be dropped
+        # term with lowest score will be dropped
+        s = np.zeros(shape=(len(self.terms), 1))
         for i, ind in enumerate(self.terms):
             if ind == self.inhomog_col:
                 s[i] = np.inf # do not remove
@@ -308,7 +362,8 @@ class ModelIterator(object): # selecting next iterate and enforcing stopping con
                 terms_copy.remove(ind)
                 if self.inhomog:
                     xi = solve(theta, terms_copy, self.inhomog_col)
-                    s[i] = np.linalg.norm(theta @ xi)/np.abs(xi[self.inhomog_col])
+                    s[i] = (np.linalg.norm(theta @ xi) / 
+                            np.abs(xi[self.inhomog_col]))
                 else:
                     s[i] = smallest_sv(theta, terms_copy, value=True)
                 # else: # use heuristic of term norm attributed to this column only
@@ -317,17 +372,21 @@ class ModelIterator(object): # selecting next iterate and enforcing stopping con
                 #         # project out other columns
                 #         if i != j:
                 #             other_col = theta[:, other_ind]
-                #             col -= np.dot(col, other_col) / np.linalg.norm(other_col)**2 * other_col
+                #             col -= (np.dot(col, other_col) / 
+            #                     np.linalg.norm(other_col)**2 * other_col)
                 #     s[i] = np.linalg.norm(xi[ind] * col)
         best = self.terms[np.argmin(s)]
         if verbose:
-            print("Scores of terms to remove:", [(represent(i), float(j)) for i, j in zip(self.terms, s)])
+            print("Scores of terms to remove:", [
+                (represent(i), float(j)) for i, j in zip(self.terms, s)
+            ])
             print("Removing term:", represent(best))
         return best 
         
     def pick(self, theta, xi, verbose, represent):
         w = theta.shape[1]
-        s = np.zeros(shape=(w-len(self.terms), 1)) # term with lowest score will be dropped
+        # term with lowest score will be dropped
+        s = np.zeros(shape=(w-len(self.terms), 1))
         other_terms = self.other_terms(w)
         #if not self.brute_force:
         #    residual_col = theta @ xi
@@ -337,29 +396,38 @@ class ModelIterator(object): # selecting next iterate and enforcing stopping con
             terms_copy.append(ind)
             if self.inhomog:
                 xi = solve(theta, terms_copy, self.inhomog_col)
-                s[i] = np.linalg.norm(theta @ xi)/np.abs(xi[self.inhomog_col])
+                s[i] = (np.linalg.norm(theta @ xi) / 
+                        np.abs(xi[self.inhomog_col]))
             else:
                 s[i] = smallest_sv(theta, terms_copy, value=True)
             # else: # use heuristic of projection of residual onto this column
             #     col = theta[:, ind]
-            #     proj = residual_col - np.dot(residual_col, col) / np.linalg.norm(col)**2 * col
-            #     s[i] = -np.linalg.norm(proj) # guess for xi[col] not yet available 
+            #     proj = residual_col - (np.dot(residual_col, col) / 
+            #                             np.linalg.norm(col)**2 * col)
+            #     s[i] = -np.linalg.norm(proj) 
+            #     # guess for xi[col] not yet available 
         best = other_terms[np.argmin(s)]
         if verbose:
-            print("Scores of terms to add:", [(represent(i), float(j)) for i, j in zip(other_terms, s)])
+            print("Scores of terms to add:", [
+                (represent(i), float(j)) for i, j in zip(other_terms, s)
+            ])
             print("Adding term:", represent(best))
         return best
     
     def check_exit(self, xis, lambdas, test_lambdas, verbose):
-        if self.k!=1 and self.k!=self.max_k: # we haven't finished iterating to one of the ends of the pass range
-            return False # it is possible to add early stopping conditions on lambdas here
+        # we haven't finished iterating to one of the ends of the pass range
+        if self.k!=1 and self.k!=self.max_k:
+            # it is possible to add early stopping conditions on lambdas here
+            return False
         new_terms = np.abs(np.sign(xis))
         old_terms = np.abs(np.sign(self.state))
         differences = new_terms-old_terms
         if verbose:
             print("Changed terms:", differences)
-        self.save_state(xis, lambdas, test_lambdas, verbose) # update iterator's saved solutions
-        if self.backward_forward and np.any(differences): # entries in xis have changed via iteration
+        # update iterator's saved solutions
+        self.save_state(xis, lambdas, test_lambdas, verbose)
+        # entries in xis have changed via iteration
+        if self.backward_forward and np.any(differences):
             self.passes += 1
             if self.passes>=self.max_passes:
                 if verbose:
@@ -368,19 +436,25 @@ class ModelIterator(object): # selecting next iterate and enforcing stopping con
             if verbose:
                 #print("Current xis:", xis)
                 #print("Saved xis:", self.state)
-                print(f"{self.passes} passes, continuing backward-forward iteration...")
+                print(f"{self.passes} passes, continuing "
+                      f"backward-forward iteration...")
             return False
         if verbose:
             print("Iteration completed.")
         return True # otherwise we are done
-        # for instance suppose xis did not change during b or f iteration. when it was saved it was optimal going in the other direction, and currently is optimal in the other direction, so no update will occur.
+        # for instance suppose xis did not change during b or f iteration. when it 
+        # was saved it was optimal going in the other direction, and currently is 
+        # optimal in the other direction, so no update will occur.
 
 class Residual(object): # residual computation
     # residual_type "absolute" is always 1
     # residual_type "fixed_column" is computed based on a fixed column of theta
-    # residual_type "matrix_relative" is relative to norm of theta[:, sub_inds] after preprocessing
-    # residual_type "hybrid" uses "matrix_relative" for regression and then theta[:, support] for reporting
-    # residual_type "dominant_balance" is relative to norm of largest term in initial dominant balance
+    # residual_type "matrix_relative" is relative to norm of theta[:, sub_inds] 
+    # after preprocessing
+    # residual_type "hybrid" uses "matrix_relative" for regression and then 
+    # theta[:, support] for reporting
+    # residual_type "dominant_balance" is relative to norm of largest term in 
+    # initial dominant balance
     def __init__(self, residual_type, anchor_col=None):
         self.residual_type = residual_type
         if residual_type == "absolute":
@@ -393,10 +467,14 @@ class Residual(object): # residual computation
         self.norm = value
         
     def __repr__(self):
-        return f"Residual(type={self.residual_type}, norm={self.norm}, anchor_col={self.anchor_col})"
+        return (f"Residual(type={self.residual_type}, norm={self.norm}, "
+                f"anchor_col={self.anchor_col})")
         
 class Threshold(object):
-    def __init__(self, threshold_type, delta=1e-10, gamma=1.5, epsilon=1e-2, ic=None, n_terms=None):
+    def __init__(
+        self, threshold_type, delta=1e-10, gamma=1.5, epsilon=1e-2, 
+        ic=None, n_terms=None
+    ):
         self.type = threshold_type
         self.delta = delta
         self.gamma = gamma
@@ -405,7 +483,9 @@ class Threshold(object):
         self.n_terms = n_terms
         
     def __repr__(self):
-        return f"Threshold(type={self.type}, delta={self.delta}, gamma={self.gamma}, epsilon={self.epsilon}, ic={self.information_criterion}, n_terms={self.n_terms})"
+        return (f"Threshold(type={self.type}, delta={self.delta}, "
+                f"gamma={self.gamma}, epsilon={self.epsilon}, "
+                f"ic={self.information_criterion}, n_terms={self.n_terms})")
     
     def select_model(self, lambdas, theta, lambda1, verbose):
         if self.n_terms is not None:
@@ -413,7 +493,8 @@ class Threshold(object):
         if self.type == 'jump': # check when lambda>delta and jump in lambda>gamma
             jumps = lambdas[:-1]/lambdas[1:]
             i = len(lambdas)-1
-            while (jumps[i-1]<self.gamma or lambdas[i-1]<self.delta) and i>0:
+            while ((jumps[i-1]<self.gamma or lambdas[i-1]<self.delta) 
+                   and i>0):
                 i -= 1
             if verbose:
                 print("Jumps:", jumps)
@@ -421,7 +502,10 @@ class Threshold(object):
             return i
         elif self.type == 'information': # minimize information criterion
             h = theta.shape[0]
-            ics = [self.information_criterion(lambd, i+1, h) for i, lambd in enumerate(lambdas)]
+            ics = [
+                self.information_criterion(lambd, i+1, h) 
+                for i, lambd in enumerate(lambdas)
+            ]
             opt_i = np.argmin(ics)
             if verbose:
                 print(f'{self.information_criterion.__name__}s: {ics}')
@@ -434,7 +518,8 @@ class Threshold(object):
             while lambdas[i]/lambda1>self.epsilon and i<len(lambdas):
                 i += 1
             return i
-        elif self.type == 'pareto': # select model before largest residual increase - don't use this one
+        # select model before largest residual increase - don't use this one
+        elif self.type == 'pareto':
             jumps = lambdas[1:]/lambdas[:-1]
             biggest_jump = np.argmax(jumps)
             if verbose:
@@ -442,7 +527,11 @@ class Threshold(object):
                 print("biggest jump:", biggest_jump, "to", biggest_jump+1)
             return biggest_jump+1
         
-def sparse_reg_bf(theta, scaler, initializer, residual, model_iterator, threshold, inhomog=False, inhomog_col=None, full_regression=False, term_names=None, verbose=False, seed=1):
+def sparse_reg_bf(
+    theta, scaler, initializer, residual, model_iterator, threshold, 
+    inhomog=False, inhomog_col=None, full_regression=False, 
+    term_names=None, verbose=False, seed=1
+):
     # compute sparse regression on Theta * xi = 0
     # theta: matrix of integrated terms
     # threshold: model selection criterion
@@ -452,8 +541,10 @@ def sparse_reg_bf(theta, scaler, initializer, residual, model_iterator, threshol
     # verbose: flag for rich output
     # n_terms: fix the number of terms selected
     # and a lot more not described above
-    # NEW ARGUMENTS: start_k - used in method='hybrid', power method at k=start_k and then stepwise reduction the rest of the way
-    # inhomog - for inhomogeneous regression, paired with inhomog_col: which term to use as b.
+    # NEW ARGUMENTS: start_k - used in method='hybrid', power method at k=start_k 
+    # and then stepwise reduction the rest of the way
+    # inhomog - for inhomogeneous regression, paired with inhomog_col: 
+    # which term to use as b.
     # max_k: max number of terms to keep in model
     # full_regression: True if searching for dense solution
     # term_names: name of terms corresponding to columns
@@ -498,13 +589,15 @@ def sparse_reg_bf(theta, scaler, initializer, residual, model_iterator, threshol
         h_test = 0
     h, w = theta.shape
     test_train_ratio = h_test/h
-    # note that ||Theta*c|| is invariant under orthogonal transformations! so we add QR decomposition for efficiency+better conditioning
+    # note that ||Theta*c|| is invariant under orthogonal transformations! 
+    # so we add QR decomposition for efficiency+better conditioning
     theta = np.linalg.qr(theta, mode='r')
-    theta_test = np.linalg.qr(theta_test, mode='r') if h_test>0 else None
+    theta_test = (np.linalg.qr(theta_test, mode='r') 
+                  if h_test>0 else None)
         
     ### CHECK ONE-TERM MODELS
     nrm = np.zeros(w)
-    nrm_test = np.zeros(w) if h_test>0 else None
+    #nrm_test = np.zeros(w) if h_test>0 else None
     if verbose:
         print("Checking single-term residuals...")
     for term in range(w):
@@ -512,21 +605,33 @@ def sparse_reg_bf(theta, scaler, initializer, residual, model_iterator, threshol
         if verbose:
             print(f'nrm[{represent(term)}]:', nrm[term])
     best_term, lambda1 = np.argmin(nrm), min(nrm)
-    lambda1_test = np.linalg.norm(theta_test[:, best_term]) if h_test>0 else None
-    if residual.residual_type in ["matrix_relative", "hybrid", "fixed_column", "absolute"]: # won't work for dominant balance
+    lambda1_test = (np.linalg.norm(theta_test[:, best_term]) 
+                    if h_test>0 else None)
+    # won't work for dominant balance
+    if residual.residual_type in [
+        "matrix_relative", "hybrid", "fixed_column", "absolute"
+    ]:
         lambda1 = lambda1 / residual.norm
-        lambda1_test = lambda1_test / residual.norm if h_test>0 else None
+        lambda1_test = (lambda1_test / residual.norm 
+                        if h_test>0 else None)
 
     # HANDLE W=0 (inf), W=1 (one-term model) CASES
     if w == 0:  # no inds allowed at all
-        return RegressionResult(xi=None, lambd=np.inf, best_term=None, lambda1=np.inf, sublibrary=term_names)
+        return RegressionResult(
+            xi=None, lambd=np.inf, best_term=None, lambda1=np.inf, 
+            sublibrary=term_names
+        )
     if w == 1:  # no regression to run
-        norm = residual.norm if hasattr(residual, 'norm') else 1
-        best_term, lambda1, lambda1_test = scaler.postprocess_single_term(best_term=best_term, lambda1=lambda1,
-                                                                          test_train_ratio=test_train_ratio, lambda1_test=lambda1_test,
-                                                                          verbose=verbose)
-        return RegressionResult(xi=[1], lambd=np.inf, best_term=best_term, lambda1=lambda1, 
-                                lambda1_test=lambda1_test, sublibrary=term_names)
+        #norm = residual.norm if hasattr(residual, 'norm') else 1
+        best_term, lambda1, lambda1_test = scaler.postprocess_single_term(
+            best_term=best_term, lambda1=lambda1,
+            test_train_ratio=test_train_ratio, lambda1_test=lambda1_test,
+            verbose=verbose
+        )
+        return RegressionResult(
+            xi=[1], lambd=np.inf, best_term=best_term, lambda1=lambda1, 
+            lambda1_test=lambda1_test, sublibrary=term_names
+        )
         
     ### INITIAL MODEL
     if full_regression:
@@ -543,9 +648,11 @@ def sparse_reg_bf(theta, scaler, initializer, residual, model_iterator, threshol
     if verbose:
         print(f"max_k set to {max_k}")
     xis = np.zeros(shape=(max_k, w))
-    lambdas = np.inf*np.ones(shape=(max_k,)) # any lambdas that are not computed are assumed to be very large
+    # any lambdas that are not computed are assumed to be very large
+    lambdas = np.inf*np.ones(shape=(max_k,))
     test_lambdas = np.inf*np.ones(shape=(max_k,))
-    xis[k-1, :] = xi # we have reversed order of arrays compared to the old SR script - index = n_terms-1
+    # we have reversed order of arrays compared to the old SR script - index = n_terms-1
+    xis[k-1, :] = xi
     
     if verbose:
         print("Iterating to find model...")
@@ -554,7 +661,8 @@ def sparse_reg_bf(theta, scaler, initializer, residual, model_iterator, threshol
         model_iterator.reset(k=k, max_k=max_k, direction=iter_direction)
         model_iterator.prepare_inhomog(inhomog, inhomog_col, scaler)
         w_inds = np.array(range(w))
-        model_iterator.set_terms(w_inds[xi!=0], verbose) # NOTE that the indices are wrt sublibrary!
+        # NOTE that the indices are wrt sublibrary!
+        model_iterator.set_terms(w_inds[xi!=0], verbose)
         actual_k = len(model_iterator.terms)
         #print(model_iterator)
         
@@ -570,24 +678,31 @@ def sparse_reg_bf(theta, scaler, initializer, residual, model_iterator, threshol
         # since it was not properly set before this 
         #print("TESTING: K=", k)
         lambdas[k-1] = lambd/residual.norm
-        test_lambdas[k-1] = np.linalg.norm(theta_test @ xi)/residual.norm if h_test>0 else None
+        test_lambdas[k-1] = (np.linalg.norm(theta_test @ xi)/residual.norm 
+                             if h_test>0 else None)
 
-        if actual_k<k: # initial support is smaller than the maximum -> the initial guess works for smaller k's as well
+        # initial support is smaller than the maximum -> the initial guess works 
+        # for smaller k's as well
+        if actual_k<k:
             for k_i in range(actual_k, k):
                 xis[k_i-1, :] = xis[k-1, :]
                 lambdas[k_i-1] = lambdas[k-1]
                 test_lambdas[k_i-1] = test_lambdas[k-1]
 
-        model_iterator.save_state(xis, lambdas, test_lambdas, verbose) # save initial state
+        # save initial state
+        model_iterator.save_state(xis, lambdas, test_lambdas, verbose)
         exit = False
         while not exit:
             ### ITERATION RULE
             xi, lambd, k = model_iterator.get_next(theta, xi, verbose, represent)
             # update current variables in iteration
             #print("TESTING: K=", k)
-            xis[k-1, :] = xi # we have reversed order of arrays compared to old SR - index = n_terms-1
-            lambdas[k-1] = lambd/residual.norm # WE NORMALIZE LAMBDA HERE FOR CONSISTENT EXIT CRITERION
-            test_lambdas[k-1] = np.linalg.norm(theta_test @ xi)/residual.norm if h_test>0 else None
+            # we have reversed order of arrays compared to old SR - index = n_terms-1
+            xis[k-1, :] = xi
+            # WE NORMALIZE LAMBDA HERE FOR CONSISTENT EXIT CRITERION
+            lambdas[k-1] = lambd/residual.norm
+            test_lambdas[k-1] = (np.linalg.norm(theta_test @ xi)/residual.norm 
+                                 if h_test>0 else None)
             if verbose and h_test>0:
                 print("new test residual:", test_lambdas[k-1])
             #if verbose:
@@ -600,11 +715,15 @@ def sparse_reg_bf(theta, scaler, initializer, residual, model_iterator, threshol
             print("all lambdas:", lambdas)
             print("all test lambdas:", test_lambdas)
         #ind = threshold.select_model(lambdas, theta, lambda1, verbose)
-        ind = threshold.select_model(model_iterator.best_lambdas, theta, lambda1, verbose) # we now use best solution found so far
+        # we now use best solution found so far
+        ind = threshold.select_model(
+            model_iterator.best_lambdas, theta, lambda1, verbose
+        )
     else: # just keep all terms
         ind = -1   
         lambdas[k-1] = lambd/residual.norm
-        test_lambdas[k-1] = np.linalg.norm(theta_test @ xi)/residual.norm if h_test>0 else None
+        test_lambdas[k-1] = (np.linalg.norm(theta_test @ xi)/residual.norm 
+                             if h_test>0 else None)
         if verbose and h_test>0:
             print("new test residual:", test_lambdas[k-1])
         if residual.residual_type == "dominant_balance":
@@ -621,43 +740,66 @@ def sparse_reg_bf(theta, scaler, initializer, residual, model_iterator, threshol
         
     #xi, lambd = xis[ind, :], lambdas[ind]
     #lambda_test = test_lambdas[ind] if h_test>0 else None
-    xi, lambd = model_iterator.best_state[ind, :], model_iterator.best_lambdas[ind] # use best solutions!
-    lambda_test = model_iterator.best_test_lambdas[ind] if h_test>0 else None
+    # use best solutions!
+    xi, lambd = model_iterator.best_state[ind, :], model_iterator.best_lambdas[ind]
+    lambda_test = (model_iterator.best_test_lambdas[ind] 
+                   if h_test>0 else None)
 
-    if residual.residual_type == "hybrid": # switch residual from matrix_relative to hybrid for output
+    # switch residual from matrix_relative to hybrid for output
+    if residual.residual_type == "hybrid":
         lambd, lambda1 = lambd*residual.norm, lambda1*residual.norm
-        lambda_test, lambda1_test = (lambda_test*residual.norm, lambda1_test*residual.norm) if h_test>0 else (None, None)
+        lambda_test, lambda1_test = (
+            (lambda_test*residual.norm, lambda1_test*residual.norm) 
+            if h_test>0 else (None, None)
+        )
         w_inds = np.array(range(w))
         terms = w_inds[xi!=0]
         residual.set_norm(np.linalg.norm(theta[:, terms]))
         lambd, lambda1 = lambd/residual.norm, lambda1/residual.norm
-        lambda_test, lambda1_test = (lambda_test/residual.norm, lambda1_test/residual.norm) if h_test>0 else (None, None)
+        lambda_test, lambda1_test = (
+            (lambda_test/residual.norm, lambda1_test/residual.norm) 
+            if h_test>0 else (None, None)
+        )
     
     ### POSTPROCESSING
     #print('xi before rescaling:', xi)
-    if inhomog: # model is normalized so coeff of b column is 1 instead of unit norm, which impacts the residuals -> we fix that here
+    # model is normalized so coeff of b column is 1 instead of unit norm, 
+    # which impacts the residuals -> we fix that here
+    if inhomog:
         xi_norm = np.linalg.norm(xi)
         lambd, lambda1 = lambd/xi_norm, lambda1/xi_norm
-        lambda_test, lambda1_test = (lambda_test/xi.norm, lambda1_test/xi.norm) if h_test>0 else (None, None)
-    xi, lambd, lambda_test = scaler.postprocess_multi_term(xi=xi, lambd=lambd, test_train_ratio=test_train_ratio, 
-                                                           lambda_test=lambda_test, verbose=verbose)
+        lambda_test, lambda1_test = (
+            (lambda_test/xi_norm, lambda1_test/xi_norm) 
+            if h_test>0 else (None, None)
+        )
+    xi, lambd, lambda_test = scaler.postprocess_multi_term(
+        xi=xi, lambd=lambd, test_train_ratio=test_train_ratio, 
+        lambda_test=lambda_test, verbose=verbose
+    )
     #print('xi after rescaling:', xi)
-    best_term, lambda1, lambda1_test = scaler.postprocess_single_term(best_term=best_term, lambda1=lambda1, 
-                                                                      test_train_ratio=test_train_ratio, lambda1_test=lambda1_test,
-                                                                      verbose=verbose)
+    best_term, lambda1, lambda1_test = scaler.postprocess_single_term(
+        best_term=best_term, lambda1=lambda1, 
+        test_train_ratio=test_train_ratio, lambda1_test=lambda1_test,
+        verbose=verbose
+    )
     
     # Reset max_k
     model_iterator.max_k = max_k_for_reset
     
-    #return RegressionResult(xi=xi, lambd=lambd, best_term=best_term, lambda1=lambda1, all_xis=xis, all_lambdas=lambdas,
-    #                       lambda_test=lambda_test, all_lambdas_test=test_lambdas, lambda1_test=lambda1_test, sublibrary=term_names)
-    return RegressionResult(xi=xi, lambd=lambd, best_term=best_term, lambda1=lambda1, all_xis=model_iterator.best_state,
-                            all_lambdas=model_iterator.best_lambdas,
-                            lambda_test=lambda_test, all_lambdas_test=model_iterator.best_test_lambdas, 
-                            lambda1_test=lambda1_test, sublibrary=term_names)
+    # return RegressionResult(xi=xi, lambd=lambd, best_term=best_term, lambda1=lambda1, 
+    #                        all_xis=xis, all_lambdas=lambdas, lambda_test=lambda_test, 
+    #                        all_lambdas_test=test_lambdas, lambda1_test=lambda1_test, 
+    #                        sublibrary=term_names)
+    return RegressionResult(
+        xi=xi, lambd=lambd, best_term=best_term, lambda1=lambda1, 
+        all_xis=model_iterator.best_state, all_lambdas=model_iterator.best_lambdas,
+        lambda_test=lambda_test, all_lambdas_test=model_iterator.best_test_lambdas, 
+        lambda1_test=lambda1_test, sublibrary=term_names
+    )
 
 # evaluate specific model on Q 
-# NOTE: use scaler with same column subsampling as any models being compared with & make sure model_vector sparsity matches it
+# NOTE: use scaler with same column subsampling as any models being compared with 
+# & make sure model_vector sparsity matches it
 def evaluate_model(theta, model_vector, scaler, residual, verbose=False):
     np.set_printoptions(precision=3)
     if residual.residual_type == "fixed_column":
@@ -684,10 +826,15 @@ def evaluate_model(theta, model_vector, scaler, residual, verbose=False):
         if verbose:
             print('Residual normalization:', residual.norm)
 
-    model_vector, lambd, _ = scaler.postprocess_multi_term(xi=model_vector, lambd=np.linalg.norm(theta @ model_vector)/residual.norm, verbose=verbose)
+    model_vector, lambd, _ = scaler.postprocess_multi_term(
+        xi=model_vector, 
+        lambd=np.linalg.norm(theta @ model_vector)/residual.norm, 
+        verbose=verbose
+    )
     return lambd
 
-def hybrid_residual(theta, xi, scaler, return_xi=False): # compute the "hybrid" residual for an existing model
+def hybrid_residual(theta, xi, scaler, return_xi=False):
+    # compute the "hybrid" residual for an existing model
     # preprocessing
     theta = scaler.scale_theta(theta)   
     theta = scaler.select_cols(theta) 
@@ -715,7 +862,8 @@ def hybrid_residual(theta, xi, scaler, return_xi=False): # compute the "hybrid" 
     #print("xi after postprocessing:", xi)
     #print("lambd after postprocessing:", lambd)
     if return_xi:
-        #xi, lambd, _ = scaler.postprocess_multi_term(xi, np.linalg.norm(theta @ xi)/norm)
+        # xi, lambd, _ = scaler.postprocess_multi_term(
+        #     xi, np.linalg.norm(theta @ xi)/norm)
         return lambd, xi[scaler.sub_inds]
     else:
         return lambd

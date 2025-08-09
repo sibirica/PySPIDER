@@ -51,7 +51,8 @@ def canonicalize(expr: EinSumExpr[Index] | Equation):
         assert False, f"Didn't find any indexings for {expr} with rank {expr.rank} :("
     try:
         canon2 = next(indexings)
-        assert False, f"Found multiple canonical indexings for {expr} with rank {expr.rank}: {canon} and {canon2}"
+        assert False, (f"Found multiple canonical indexings for {expr} with rank "
+                       f"{expr.rank}: {canon} and {canon2}")
     except StopIteration:
         pass
     return canon
@@ -122,7 +123,9 @@ def contract(expr: EinSumExpr[VarIndex] | Equation[VarIndex], i: int, j: int):
             return Equation(terms=[contract(t, i, j) for t in ts], coeffs=c)
         case EinSumExpr():
             n_singles = index_rank(expr.all_indices()) 
-            assert i<n_singles and j<n_singles, f"Can only contract single indices, not ({i}, {j}) in {expr}"
+            assert i<n_singles and j<n_singles, (
+                f"Can only contract single indices, not ({i}, {j}) in {expr}"
+            )
             new_n_singles = n_singles - 2
             new_double = new_n_singles
             if j<i:
@@ -326,13 +329,16 @@ class Observable[T](EinSumExpr):
 
     def __lt__(self, other):
         if not isinstance(other, Observable):
-            raise TypeError(f"Operation not supported between instances of '{type(self)}' and '{type(other)}'")
+            raise TypeError(
+                f"Operation not supported between instances of '{type(self)}' and '{type(other)}'"
+            )
         return self.string < other.string if self.string != other.string \
             else tuple(self.all_indices()) < tuple(other.all_indices())
 
     def __repr__(self):
         index_string = ''.join([repr(idx) for idx in self.all_indices()])
-        return f"{self.string}" if index_string == "" else f"{self.string}_{index_string}"
+        return (f"{self.string}" if index_string == "" 
+                else f"{self.string}_{index_string}")
 
     def sub_exprs(self) -> Iterable[T]:
         return []
@@ -410,7 +416,9 @@ class LibraryPrime[T, Derivand](EinSumExpr):
 
     def __lt__(self, other):
         if not isinstance(other, LibraryPrime):
-            raise TypeError(f"Operation not supported between instances of '{type(self)}' and '{type(other)}'")
+            raise TypeError(
+                f"Operation not supported between instances of '{type(self)}' and '{type(other)}'"
+            )
         
         # continuous case
         if hasattr(self.derivand, 'string') and self.derivand.string != other.derivand.string:
@@ -530,7 +538,9 @@ class LibraryTerm[T, Derivand](EinSumExpr):
 
     # def __lt__(self, other):
     #     if not isinstance(other, Observable):
-    #         raise TypeError(f"Operation not supported between instances of '{type(self)}' and '{type(other)}'")
+    #         raise TypeError(
+    #             f"Operation not supported between instances of '{type(self)}' and '{type(other)}'"
+    #         )
     #     return self. < other.string if self.string != other.string \
     #         else tuple(self.all_indices()) < tuple(other.all_indices())
 

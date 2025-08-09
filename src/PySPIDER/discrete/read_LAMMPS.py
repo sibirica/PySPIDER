@@ -6,11 +6,15 @@ from matplotlib.animation import FuncAnimation
 from IPython.display import HTML
 
 
-def dump_to_traj(in_file, out_file, num_dimensions, timestep, L=1, vel_file=None):
+def dump_to_traj(
+    in_file, out_file, num_dimensions, timestep, L=1, vel_file=None
+):
     # num_dimensions: 2 (ignore z coordinate) or 3
     # timestep: set in LAMMPS input script, make a copy here
-    mode = "metadata"  # toggles between metadata (e.g. what timestep are we on?) or data (particles positions)
-    line_is_time = False  # only true if we're on the line where the timestep is stated
+    # toggles between metadata (e.g. what timestep are we on?) or data (particles positions)
+    mode = "metadata"
+    # only true if we're on the line where the timestep is stated
+    line_is_time = False
     dt_set = False
     prev_time = 0
 
@@ -37,7 +41,8 @@ def dump_to_traj(in_file, out_file, num_dimensions, timestep, L=1, vel_file=None
                 traj = np.zeros(shape=(natoms, num_dimensions))
                 traj_list.append(traj)
             elif mode == "data":  # set data
-                datafields = list(map(float, line.split()))  # split into [atom, id, type, x, y, (z)]
+                # split into [atom, id, type, x, y, (z)]
+                datafields = list(map(float, line.split()))
                 atom = int(datafields[0]) - 1
                 pos = np.array(datafields[2:2 + num_dimensions])
                 traj[atom, :] = pos + offset.transpose()
@@ -59,7 +64,8 @@ def dump_to_traj(in_file, out_file, num_dimensions, timestep, L=1, vel_file=None
                         bounds = list(map(float, line.split()))
                         # offset -= bounds[0] # want grid to start at 0, assume spatial symmetry
                         # dims[:num_dimensions] = [int(np.ceil(bounds[1]-bounds[0]))]*num_dimensions
-                        dims.append(1)  # I'm not sure LAMMPS does other size boxes anyway
+                        # I'm not sure LAMMPS does other size boxes anyway
+                        dims.append(1)
                         spatial_set = True
     trajs = np.dstack(traj_list)  # stack the list of 2d arrays
     # remake bounds & offset
@@ -82,11 +88,13 @@ def dump_to_traj(in_file, out_file, num_dimensions, timestep, L=1, vel_file=None
                     v_slice = np.zeros(shape=(natoms, num_dimensions))
                     v_list.append(v_slice)
                 elif mode == "data":  # set data
-                    datafields = list(map(float, line.split()))  # split into [atom, vx, vy, (vz)]
+                    # split into [atom, vx, vy, (vz)]
+                    datafields = list(map(float, line.split()))
                     atom = int(datafields[0]) - 1
                     v = np.array(datafields[1:1 + num_dimensions])
                     v_slice[atom, :] = v
-        vs = np.dstack(v_list) / (2*L) # everything is off by length scale rescaling (2*?)L
+        # everything is off by length scale rescaling (2*?)L
+        vs = np.dstack(v_list) / (2*L)
     # save trajectories, velocities, & dt to out_file
     with open(out_file, 'wb') as f_out:
         np.save(f_out, trajs, allow_pickle=True)
@@ -107,8 +115,13 @@ def make_video(out_file, vid_file):  # only works for 2D data at the moment
             print(i)
         qv.set_offsets(pos[:, :, i])
         norms = np.sqrt(vs[:, 0, i] ** 2 + vs[:, 1, i] ** 2)
-        qv.set_UVC(vs[:, 0, i] / norms, vs[:, 1, i] / norms, np.angle(vs[:, 0, i] + 1.0j * vs[:, 1, i]))
+        qv.set_UVC(
+            vs[:, 0, i] / norms, vs[:, 1, i] / norms, 
+            np.angle(vs[:, 0, i] + 1.0j * vs[:, 1, i])
+        )
         return qv,
 
-    anim = FuncAnimation(fig, animate, np.arange(0, pos.shape[-1]), interval=1, blit=True)
+    anim = FuncAnimation(
+        fig, animate, np.arange(0, pos.shape[-1]), interval=1, blit=True
+    )
     anim.save(vid_file, fps=30, extra_args=['-vcodec', 'libx264'])

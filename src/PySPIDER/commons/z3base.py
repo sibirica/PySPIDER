@@ -45,13 +45,19 @@ class IndexHole:
         elif isinstance(other, VarIndex):
             return True
         else:
-            raise TypeError(f"Operation not supported between instances of '{type(self)}' and '{type(other)}'")
+            raise TypeError(
+                f"Operation not supported between instances of "
+                f"'{type(self)}' and '{type(other)}'"
+            )
 
     def __gt__(self, other):
         if isinstance(other, (IndexHole, VarIndex)):
             return False
         else:
-            raise TypeError(f"Operation not supported between instances of '{type(self)}' and '{type(other)}'")
+            raise TypeError(
+                f"Operation not supported between instances of "
+                f"'{type(self)}' and '{type(other)}'"
+            )
 
     def __eq__(self, other):
         if not isinstance(other, IndexHole):
@@ -72,7 +78,10 @@ class SMTIndex:
 
     def __eq__(self, other):
         if not isinstance(other, SMTIndex):
-            raise TypeError(f"Operation not supported between instances of '{type(self)}' and '{type(other)}'")
+            raise TypeError(
+                f"Operation not supported between instances of "
+                f"'{type(self)}' and '{type(other)}'"
+            )
         else:
             return self.var == other.var
 
@@ -117,7 +126,10 @@ class LiteralIndex:
         if isinstance(other, str):
             return True # 't' always goes after spatial indices
         elif not isinstance(other, LiteralIndex):
-            raise TypeError(f"Operation not supported between instances of '{type(self)}' and '{type(other)}'")
+            raise TypeError(
+                f"Operation not supported between instances of "
+                f"'{type(self)}' and '{type(other)}'"
+            )
         else:
             return self.value < other.value
 
@@ -125,7 +137,10 @@ class LiteralIndex:
         if isinstance(other, str):
             return True # 't' always goes after spatial indices
         elif not isinstance(other, LiteralIndex):
-            raise TypeError(f"Operation not supported between instances of '{type(self)}' and '{type(other)}'")
+            raise TypeError(
+                f"Operation not supported between instances of "
+                f"'{type(self)}' and '{type(other)}'"
+            )
         else:
             return self.value == other.value
 
@@ -134,17 +149,24 @@ class LiteralIndex:
 
 Index = IndexHole | SMTIndex | VarIndex | LiteralIndex
 
-# get rank of an Einstein expression by looking at its VarIndices/IndexHoles (for LiteralIndex, return 0)
+# get rank of an Einstein expression by looking at its VarIndices/IndexHoles
+# (for LiteralIndex, return 0)
 def index_rank(indices: Iterable[VarIndex | IndexHole]):
     index_counter = Counter(indices)
-    num_singles = len([count for index, count in index_counter.items() if count==1 and isinstance(index, VarIndex)])
+    num_singles = len([
+        count for index, count in index_counter.items() 
+        if count == 1 and isinstance(index, VarIndex)
+    ])
     num_holes = index_counter[IndexHole()]
     return num_singles+num_holes
 
 # get highest index in list of indices
 def highest_index(indices: Iterable[VarIndex]):
     # IndexHoles always count as the default of -1
-    return max((-1 if isinstance(index, IndexHole) else index.value) for index in indices) if indices else -1
+    return max(
+        (-1 if isinstance(index, IndexHole) else index.value) 
+        for index in indices
+    ) if indices else -1
 
 @dataclass(frozen=True)
 class EinSumExpr[T](ABC):
@@ -160,7 +182,8 @@ class EinSumExpr[T](ABC):
     def __eq__(self, other):
         ...
 
-    # may need separate struct_eq if we need to manually check for terms commuting across *
+    # may need separate struct_eq if we need to manually check for terms 
+    # commuting across *
 
     @abstractmethod
     def __repr__(self):
@@ -175,7 +198,8 @@ class EinSumExpr[T](ABC):
 
     @abstractmethod
     def sub_exprs(self) -> Iterable[EinSumExpr[T]]:
-        """ Implementation returns list of sub_exprs (whatever this attribute may be called) """
+        """ Implementation returns list of sub_exprs 
+        (whatever this attribute may be called) """
         ...
 
     @abstractmethod
@@ -184,21 +208,24 @@ class EinSumExpr[T](ABC):
         ...
 
     #@lru_cache(maxsize=10000)
-    def all_indices(self) -> list[T]: # make sure these are in depth-first/left-to-right order
+    def all_indices(self) -> list[T]:
+        # make sure these are in depth-first/left-to-right order
         """ List all indices """
-        return list(self.own_indices()) + [idx for expr in self.sub_exprs() for idx in expr.all_indices()]
+        return (list(self.own_indices()) + 
+                [idx for expr in self.sub_exprs() for idx in expr.all_indices()])
 
     @abstractmethod
     def eq_canon(self) -> Tuple[EinSumExpr[T], int]:
-        """ Returns the canonical form of the term modulo equality rewrites & the sign after rewrites. """
+        """ Returns the canonical form of the term modulo equality rewrites 
+        & the sign after rewrites. """
         ...
 
     @abstractmethod
     def map[T2](self, *,
                 expr_map: Callable[[EinSumExpr[T]], EinSumExpr[T2]] = lambda x: x,
                 index_map: Callable[[T], T2] = lambda x: x) -> EinSumExpr[T2]:
-        """ Constructs a copy of self replacing (direct) child expressions according to expr_map
-            and (direct) child indices according to index_map"""
+        """ Constructs a copy of self replacing (direct) child expressions 
+        according to expr_map and (direct) child indices according to index_map"""
         ...
 
     def map_all_indices[T2](self, index_map: Callable[[T], T2]) -> EinSumExpr[T2]:
@@ -212,12 +239,15 @@ class EinSumExpr[T](ABC):
     def purge_indices(self): # return a copy with only IndexHoles
         return self.map_all_indices(index_map=lambda idx: IndexHole())
 
-    def canonical_indexing_problem(self, idx_cache: defaultdict | None = None) -> tuple[EinSumExpr[SMTIndex], list[z3.ExprRef]]:
+    def canonical_indexing_problem(
+        self, idx_cache: defaultdict | None = None
+    ) -> tuple[EinSumExpr[SMTIndex], list[z3.ExprRef]]:
         base_id = f"i{id(self)}"
         def next_z3_var():
             return free_z3_var(base_id)
         
-        idx_cache = defaultdict(next_z3_var) if idx_cache is None else idx_cache
+        idx_cache = (defaultdict(next_z3_var) 
+                     if idx_cache is None else idx_cache)
         
         constraints = []
         def emap(expr):
@@ -241,7 +271,9 @@ class EinSumExpr[T](ABC):
             #own_indices = sorted(list(updated.own_indices()))
             own_indices = list(updated.own_indices())
             for i, i_next in zip(own_indices, own_indices[1:]):
-                if i.src is None: # for reassignment, only add constraint if the first index in the pair isn't already constrained
+                # for reassignment, only add constraint if the first index 
+                # in the pair isn't already constrained
+                if i.src is None:
                     new_constraints.append(i.var <= i_next.var)
         if self.can_commute_exprs:
             duplicates = defaultdict(list)
@@ -250,15 +282,20 @@ class EinSumExpr[T](ABC):
                 duplicates[e].append(e_new)
             for dup_list in duplicates.values():
                 for e, e_next in zip(dup_list, dup_list[1:]):
-                    new_constraints.append(lexico_le(e.all_indices(), e_next.all_indices()))
+                    new_constraints.append(
+                        lexico_le(e.all_indices(), e_next.all_indices())
+                    )
             #print(duplicates)
 
         #print(">>", updated, list(updated.own_indices()), new_constraints)
         constraints += new_constraints
         return updated, constraints
 
-def generate_indexings(expr: EinSumExpr[IndexHole | VarIndex], autocorrect: bool=False) -> Iterable[EinSumExpr[VarIndex]]:
-    indexed_expr, constraints = expr.canonical_indexing_problem() # includes lexicographic constraints
+def generate_indexings(
+    expr: EinSumExpr[IndexHole | VarIndex], autocorrect: bool = False
+) -> Iterable[EinSumExpr[VarIndex]]:
+    # includes lexicographic constraints
+    indexed_expr, constraints = expr.canonical_indexing_problem()
     assert_type(indexed_expr, EinSumExpr[SMTIndex])
     #print(indexed_expr)
     #print(constraints)
@@ -278,35 +315,50 @@ def generate_indexings(expr: EinSumExpr[IndexHole | VarIndex], autocorrect: bool
                    p_idx_max_next == paired_idx_max),
             z3.And(idx.var >= n_single_inds, idx.var <= paired_idx_max,
                    s_idx_max_next == single_idx_max,
-                   p_idx_max_next == paired_idx_max + z3.If(idx.var==paired_idx_max, 1, 0)
+                   p_idx_max_next == (paired_idx_max + 
+                                       z3.If(idx.var == paired_idx_max, 1, 0))
                   )
         )]
         single_idx_max = s_idx_max_next
         paired_idx_max = p_idx_max_next
-    constraints += [single_idx_max == n_single_inds, paired_idx_max == n_total_inds]
+    constraints += [
+        single_idx_max == n_single_inds, 
+        paired_idx_max == n_total_inds
+    ]
     # constrain number of appearances in pair
     for paired_idx in range(n_single_inds, n_total_inds):
-       constraints.append(z3.AtMost(*[idx.var == paired_idx for idx in indices], 2))
+       constraints.append(
+           z3.AtMost(*[idx.var == paired_idx for idx in indices], 2)
+       )
     # give problem to smt solver
     solver = z3.Solver()
     solver.add(*constraints)
-    while (result := solver.check()) == z3.sat: # smt solver finds a new solution
+    # smt solver finds a new solution
+    while (result := solver.check()) == z3.sat:
         m = solver.model()
         indexing = {index: m[index.var] for index in indices}
         mapped_expr = indexed_expr.map_all_indices(
-            index_map = lambda index: VarIndex(indexing[index].as_long(), src=index.src))
+            index_map=lambda index: VarIndex(
+                indexing[index].as_long(), src=index.src
+            )
+        )
         subexpr_commut_valid, first_perm = check_subexpr_cv(mapped_expr)
-        if subexpr_commut_valid and check_commutative_validity(mapped_expr, list(mapped_expr.all_indices())): 
+        if (subexpr_commut_valid and 
+            check_commutative_validity(mapped_expr, list(mapped_expr.all_indices()))): 
             # check expression is actually valid
             yield mapped_expr
         else:
             if autocorrect:
-                #print(first_perm, check_commutative_validity(mapped_expr, list(mapped_expr.all_indices()))) 
+                # print(first_perm, check_commutative_validity(
+                #     mapped_expr, list(mapped_expr.all_indices())
+                # )) 
                 #print(f"{mapped_expr} failed the test")
                 mapped_expr = secv_canon(mapped_expr, start=first_perm)
                 yield mapped_expr
         # prevent smt solver from repeating solution
-        solver.add(z3.Or(*[idx.var != val for idx, val in indexing.items()]))
+        solver.add(
+            z3.Or(*[idx.var != val for idx, val in indexing.items()])
+        )
     if result == z3.unknown:
         raise RuntimeError("Could not solve SMT problem :(")
     #print(solver.to_smt2())
@@ -317,18 +369,26 @@ def lexico_le(idsA: list[SMTIndex], idsB: list[SMTIndex]) -> z3.ExprRef:
         lt = z3.Or(a.var < b.var, z3.And(a.var == b.var, lt))
     return lt
 
-# check whether this term is canonical with respect to the own_indices of commutative expressions
-def check_commutative_validity(mapped_expr: EinSumExpr[VarIndex], all_indices: List[VarIndex], inds_to_left: int=0) -> bool: 
+# check whether this term is canonical with respect to the own_indices 
+# of commutative expressions
+def check_commutative_validity(
+    mapped_expr: EinSumExpr[VarIndex], 
+    all_indices: List[VarIndex], 
+    inds_to_left: int = 0
+) -> bool: 
     if mapped_expr.can_commute_indices: # check commutative indices
         commuting_inds = list(mapped_expr.own_indices())
         in_com_inds = lambda idx: idx in commuting_inds
         must_be_sorted = (
             list(filter(in_com_inds, all_indices[:inds_to_left]))
-            + [commuting_inds[i] for i in range(1, len(commuting_inds)) if commuting_inds[i-1] == commuting_inds[i]]
-            + list(filter(in_com_inds, all_indices[inds_to_left + len(commuting_inds):]))
+            + [commuting_inds[i] for i in range(1, len(commuting_inds)) 
+               if commuting_inds[i-1] == commuting_inds[i]]
+            + list(filter(in_com_inds, 
+                         all_indices[inds_to_left + len(commuting_inds):]))
         )
         #print(must_be_sorted)
-        if any(must_be_sorted[i] < must_be_sorted[i-1] for i in range(1, len(must_be_sorted))):
+        if any(must_be_sorted[i] < must_be_sorted[i-1] 
+               for i in range(1, len(must_be_sorted))):
             return False
         
     for subexpr in mapped_expr.sub_exprs():
@@ -337,29 +397,36 @@ def check_commutative_validity(mapped_expr: EinSumExpr[VarIndex], all_indices: L
         inds_to_left += len(list(subexpr.all_indices()))
     return True   
 
-def check_subexpr_cv(mapped_expr: EinSumExpr[VarIndex]): # check if canonicity violated by relabel+sort (only a little messy)
+# check if canonicity violated by relabel+sort (only a little messy)
+def check_subexpr_cv(mapped_expr: EinSumExpr[VarIndex]):
     first_bound_ind = mapped_expr.rank
     last_bound_ind = highest_index(mapped_expr.all_indices())
     bound_inds = list(range(first_bound_ind, last_bound_ind+1))
     for i, perm in enumerate(permutations(bound_inds)):
         if perm != bound_inds:
-            imap = lambda i: VarIndex(perm[i.value-first_bound_ind]) if i.value in bound_inds else i
+            imap = lambda i: (VarIndex(perm[i.value-first_bound_ind]) 
+                              if i.value in bound_inds else i)
             relabeled_expr = mapped_expr.map_all_indices(imap)
-            if relabeled_expr.eq_canon()[0].all_indices() < mapped_expr.all_indices():
+            if (relabeled_expr.eq_canon()[0].all_indices() < 
+                mapped_expr.all_indices()):
                 #print(mapped_expr, mapped_expr.all_indices(), perm, bound_inds, i)
                 return False, i
     return True, -1
 
-def secv_canon(expr: EinSumExpr[VarIndex], start: int=0): # canonicalize wrt relabel+sort if necessary
-    # check commutative expressions at base by relabel+sort (only a little messy)
+# canonicalize wrt relabel+sort if necessary
+def secv_canon(expr: EinSumExpr[VarIndex], start: int = 0):
+    # check commutative expressions at base by relabel+sort 
+    # (only a little messy)
     first_bound_ind = expr.rank
     last_bound_ind = highest_index(expr.all_indices())
     bound_inds = list(range(first_bound_ind, last_bound_ind+1))
     best_expr = expr
     for perm in list(permutations(bound_inds))[start:]:
         #print(bound_inds, perm)
-        #imap = lambda i: VarIndex(perm[i.value-first_bound_ind]) if (isinstance(i, VarIndex) and i.value in bound_inds) else i
-        imap = lambda i: VarIndex(perm[i.value-first_bound_ind]) if i.value in bound_inds else i
+        # imap = lambda i: VarIndex(perm[i.value-first_bound_ind]) 
+        #         if (isinstance(i, VarIndex) and i.value in bound_inds) else i
+        imap = lambda i: (VarIndex(perm[i.value-first_bound_ind]) 
+                          if i.value in bound_inds else i)
         relabeled_expr = expr.map_all_indices(imap)
         relabeled_ec = relabeled_expr.eq_canon()[0]
         if relabeled_ec.all_indices() < best_expr.all_indices():

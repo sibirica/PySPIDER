@@ -10,7 +10,10 @@ def interp(data, rate, k=3): # interpolate whole data array
     #u = np.hstack([[0]*k, np.linspace(0, 1, num=data.shape[-1]), [1]*k]) # clamp both ends by repeating extra k times
     u = np.linspace(0, 1, num=data.shape[-1])
     eval_pts = np.linspace(0, 1, num=(data.shape[-1]-1)*rate+1)
-    outputs = [interp_particle(data[particle, ...], rate, k, u, eval_pts) for particle in range(data.shape[0])]
+    outputs = [
+        interp_particle(data[particle, ...], rate, k, u, eval_pts) 
+        for particle in range(data.shape[0])
+    ]
     fine_data = [output[0] for output in outputs]
     splines = [output[1] for output in outputs]
     fine_data = np.transpose(np.dstack(fine_data))
@@ -22,8 +25,9 @@ def interp_particle(part_data, rate, k, u, eval_pts):
     #if len(part_data.shape)==1:
         #tck = splprep([part_data], u=u, k=k)
     #else:
-        # split up into x, y etc. lists and clamp by duplicating first and last point an extra k times
-    #    coords_list = [clamp_k(l[0, :], k) for l in np.split(part_data, part_data.shape[0], axis=0)]
+        # split up into x, y etc. lists and clamp by duplicating first and last 
+        # point an extra k times
+        # coords_list = [clamp_k(l[0, :], k) for l in np.split(part_data, part_data.shape[0], axis=0)]
     #    print(coords_list)
         #tck = splprep(coords_list, u=u, k=k)
     spline = make_interp_spline(u, part_data.T, k, bc_type="clamped")

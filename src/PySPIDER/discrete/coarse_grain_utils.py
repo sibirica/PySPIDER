@@ -5,7 +5,9 @@ from math import gamma
 
 
 @jit(
-    signature_or_function="float64[:](float64[:, :], float64[:], float64[:, :], float64)",
+    signature_or_function=(
+        "float64[:](float64[:, :], float64[:], float64[:, :], float64)"
+    ),
     nopython=True,
     cache=False,
     fastmath=False,
@@ -16,7 +18,8 @@ def gaussian_coarse_grain2d(points: float64[:, :],
                             xi: float64[:, :],
                             sigma: float64) -> float64[:]:
     """
-    This function implements a gaussian coarse graining algorithm. Heavily inspired by the scipy implementation at
+    This function implements a gaussian coarse graining algorithm. Heavily inspired 
+    by the scipy implementation at 
     https://github.com/scipy/scipy/blob/main/scipy/stats/_stats.pyx
     :param points: the data points to estimate from in 2 dimensions. Shape (n, 2).
     :param values: the multivariate values associated with the data points. (n,)
@@ -37,8 +40,10 @@ def gaussian_coarse_grain2d(points: float64[:, :],
     for i in prange(n):
         local_estimate: float64[m] = np.zeros(m)  # intermediate results for each thread
         for j in range(m):
-            local_estimate[j] += np.exp(-np.sum((points_[i, :] - xi_[j, :]) * (points_[i, :] - xi_[j, :])) / 2) \
-                                 * values[i]
+            local_estimate[j] += (
+                np.exp(-np.sum((points_[i, :] - xi_[j, :]) * 
+                               (points_[i, :] - xi_[j, :])) / 2) * values[i]
+            )
 
         # Reduction operation to combine the intermediate results
         for j in prange(m):
@@ -48,7 +53,9 @@ def gaussian_coarse_grain2d(points: float64[:, :],
 
 
 @jit(
-    signature_or_function="float64[:](float64[:, :], float64[:], float64[:, :], float64, float64)",
+    signature_or_function=(
+        "float64[:](float64[:, :], float64[:], float64[:, :], float64, float64)"
+    ),
     nopython=True,
     cache=False,
     fastmath=False,
@@ -63,8 +70,9 @@ def kd_gaussian_coarse_grain2d(points: float64[:, :],
                                sigma: float64,
                                cutoff: float64) -> float64[:]:
     """
-    This function implements a gaussian coarse graining algorithm. Uses a KDTree to only consider nearby points.
-    Heavily inspired by the scipy implementation at https://github.com/scipy/scipy/blob/main/scipy/stats/_stats.pyx
+    This function implements a gaussian coarse graining algorithm. Uses a KDTree to 
+    only consider nearby points. Heavily inspired by the scipy implementation at 
+    https://github.com/scipy/scipy/blob/main/scipy/stats/_stats.pyx
     :param points: the data points to estimate from in 2 dimensions. Shape (n, 2).
     :param values: the multivariate values associated with the data points. (n,)
     :param xi: the coordinates to evaluate the estimate at in 2 dimensions. Shape (m, 2).
@@ -77,10 +85,12 @@ def kd_gaussian_coarse_grain2d(points: float64[:, :],
     m: uint64 = xi.shape[0]  # number of evaluation points
 
     points_: float64[n, d] = points / sigma  # the scaled data points
-    leaf_size: uint64 = np.floor(np.log2(n))  # the leaf_size of the KDTree (log2(n) is a good heuristic)
+    # the leaf_size of the KDTree (log2(n) is a good heuristic)
+    leaf_size: uint64 = np.floor(np.log2(n))
     tree = KDTree(points_, leafsize=leaf_size)  # the KDTree of the scaled data points
 
-    max_neighbors: uint64 = n  # [TODO] pass in L as a parameter, = c*[(cutoff*sigma)/L]^2*n
+    # [TODO] pass in L as a parameter, = c*[(cutoff*sigma)/L]^2*n
+    max_neighbors: uint64 = n
 
     xi_: float64[m, d] = xi / sigma  # the scaled evaluation points
 
@@ -90,18 +100,23 @@ def kd_gaussian_coarse_grain2d(points: float64[:, :],
     for j in prange(m):
         neighbors: uint64[:] = tree.query_radius(xi_[j, :], cutoff)[0]
         n_neighbors: unit64[:] = len(neighbors)
-        #assert n_neighbors <= max_neighbors, "too many neighbors, increase max_neighbors tolerance"
+        # assert n_neighbors <= max_neighbors, 
+        # "too many neighbors, increase max_neighbors tolerance"
         est_i : float64[max_neighbors] = np.zeros(max_neighbors)
         for i in prange(n_neighbors):
-            est_i[i] = np.exp(-np.sum((points_[i, :] - xi_[j, :]) * (points_[i, :] - xi_[j, :])) / 2) \
-                           * values[i]
+            est_i[i] = (
+                np.exp(-np.sum((points_[i, :] - xi_[j, :]) * 
+                               (points_[i, :] - xi_[j, :])) / 2) * values[i]
+            )
         estimate[j] = np.sum(est_i)
 
     return estimate * norm
 
 
 @jit(
-    signature_or_function="float64[:,:](float64[:, :, :], float64[:, :], float64[:, :], float64, float64)",
+    signature_or_function=(
+        "float64[:,:](float64[:, :, :], float64[:, :], float64[:, :], float64, float64)"
+    ),
     nopython=True,
     cache=False,
     fastmath=False,
@@ -116,8 +131,9 @@ def coarse_grain_time_slices(points: float64[:, :, :],
                              sigma: float64,
                              cutoff: float64) -> float64[:, :]:
     """
-    This function implements a gaussian coarse graining algorithm. Uses a KDTree to only consider nearby points.
-    Heavily inspired by the scipy implementation at https://github.com/scipy/scipy/blob/main/scipy/stats/_stats.pyx
+    This function implements a gaussian coarse graining algorithm. Uses a KDTree to 
+    only consider nearby points. Heavily inspired by the scipy implementation at 
+    https://github.com/scipy/scipy/blob/main/scipy/stats/_stats.pyx
     :param points: the data points to estimate from in 2 dimensions + time. Shape (n, 2, t).
     :param values: the multivariate values associated with the data points. (n, t)
     :param xi: the coordinates to evaluate the estimate at in 2 dimensions. Shape (m, 2).
@@ -130,14 +146,18 @@ def coarse_grain_time_slices(points: float64[:, :, :],
 
     estimate: float64[m, t] = np.zeros((m, t))  # the estimate at the evaluation points
     for h in range(t):
-        estimate[:, h] = kd_gaussian_coarse_grain2d(points[:, :, h], values[:, h], xi[:, :], sigma, cutoff)
+        estimate[:, h] = kd_gaussian_coarse_grain2d(
+            points[:, :, h], values[:, h], xi[:, :], sigma, cutoff
+        )
 
     return estimate
 
 
 # WARNING: CURRENTLY DOESN'T WORK WITH PERIODIC BOUNDARIES
 @jit(
-    signature_or_function="float64[:,:](float64[:, :, :], float64[:, :], float64[:, :], float64, float64, int64)",
+    signature_or_function=(
+        "float64[:,:](float64[:, :, :], float64[:, :], float64[:, :], float64, float64, int64)"
+    ),
     nopython=True,
     cache=False,
     fastmath=False,
@@ -176,7 +196,8 @@ def verlet_coarse_grain_time_slices(points: float64[:, :, :],
     norm: float64 = 1 / (2 * np.pi) / (sigma * sigma)  # the normalization factor of the gaussian kernel
     for k in np.arange(int64(0), t, h):
         # build the KDTree
-        # print("Building KDTree for time slice " + str(k) + " of " + str(t) + " time slices.")
+        # print("Building KDTree for time slice " + str(k) + " of " + str(t) + 
+        #       " time slices.")
         tree = KDTree(points_[:, :, k], leafsize=leaf_size)  # the KDTree of the scaled data points
         for j in prange(m):
             neighbors: uint64[:] = tree.query_radius(xi_[j, :], cutoff)[0]
@@ -216,7 +237,9 @@ def int_pow(x: float64, n: uint8) -> float64:
 
 # [TODO] same changes as Gaussian
 @jit(
-    signature_or_function="float64[:](float64[:, :], float64[:], float64[:, :], uint8, float64)",
+    signature_or_function=(
+        "float64[:](float64[:, :], float64[:], float64[:, :], uint8, float64)"
+    ),
     nopython=True,
     cache=False,
     fastmath=True,
@@ -265,7 +288,9 @@ def kd_poly_coarse_grain2d(points: float64[:, :],
 
 
 @jit(
-    signature_or_function="float64[:,:](float64[:, :, :], float64[:, :], float64[:, :], uint8, float64)",
+    signature_or_function=(
+        "float64[:,:](float64[:, :, :], float64[:, :], float64[:, :], uint8, float64)"
+    ),
     nopython=True,
     cache=False,
     fastmath=False,

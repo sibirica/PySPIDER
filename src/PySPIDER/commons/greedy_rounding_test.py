@@ -98,7 +98,14 @@ def get_eigenvectors_for_cuts(X_solution: np.ndarray) -> np.ndarray:
     else:
         return None # Matrix is approximately PSD
 
-def greedy_rounding(Sigma: np.ndarray, k: int, max_cuts: int = 5, cut_type: str = "trailing_eigenvalue", verbose: bool = False, warm_start: bool = True) -> Tuple[np.ndarray, float, dict]:
+def greedy_rounding(
+    Sigma: np.ndarray, 
+    k: int, 
+    max_cuts: int = 5, 
+    cut_type: str = "trailing_eigenvalue", 
+    verbose: bool = False, 
+    warm_start: bool = True
+) -> Tuple[np.ndarray, float, dict]:
     """
     Implements the greedy rounding method, augmented with an iterative cutting-plane
     scheme to enforce Positive Semidefiniteness (PSD) more strictly.
@@ -162,7 +169,9 @@ def greedy_rounding(Sigma: np.ndarray, k: int, max_cuts: int = 5, cut_type: str 
     # 2. Sparsity Constraint on z [20]
     model.addConstr(gp.quicksum(z_vars[i] for i in range(w)) <= k, name="sparsity_sum_z")
     # 3. Normalization of X [20]
-    model.addConstr(gp.quicksum(X_vars[i,i] for i in range(w)) == 1.0, name="trace_X_eq_1")
+    model.addConstr(
+        gp.quicksum(X_vars[i,i] for i in range(w)) == 1.0, name="trace_X_eq_1"
+    )
     # 4. Absolute Value Linking [20]
     for i in range(w):
         for j in range(w):
@@ -172,9 +181,15 @@ def greedy_rounding(Sigma: np.ndarray, k: int, max_cuts: int = 5, cut_type: str 
     np.fill_diagonal(M_matrix, 1.0)
     for i in range(w):
         for j in range(w):
-            model.addConstr(abs_X_vars[i,j] <= M_matrix[i,j] * z_vars[i], name=f"X_bound_z_{i}_{j}")
+            model.addConstr(
+                abs_X_vars[i,j] <= M_matrix[i,j] * z_vars[i], 
+                name=f"X_bound_z_{i}_{j}"
+            )
     # 6. Total Absolute Value Sum for X [20]
-    model.addConstr(gp.quicksum(abs_X_vars[i,j] for i in range(w) for j in range(w)) <= k, name="total_abs_X_sum")
+    model.addConstr(
+        gp.quicksum(abs_X_vars[i,j] for i in range(w) for j in range(w)) <= k, 
+        name="total_abs_X_sum"
+    )
 
     # 7. Positive Semidefinite Relaxation (2x2 Principal Minors): X_ij^2 <= X_ii * X_jj [7].
     # This is a rotated second-order cone constraint recognized by Gurobi when X_ii, X_jj >= 0
@@ -281,7 +296,9 @@ def greedy_rounding(Sigma: np.ndarray, k: int, max_cuts: int = 5, cut_type: str 
                 converged = True
                 break
         else:
-            raise ValueError("Unsupported cut type. Choose 'trailing_eigenvalue' or 'nuclear_norm'.")
+            raise ValueError(
+                "Unsupported cut type. Choose 'trailing_eigenvalue' or 'nuclear_norm'."
+            )
 
     # Determine the actual number of cuts added
     cuts_added = cut_iter + 1 if not converged else cut_iter
@@ -347,8 +364,10 @@ def greedy_rounding(Sigma: np.ndarray, k: int, max_cuts: int = 5, cut_type: str 
     
     # Handle potential numerical precision issues
     if numerator_sq < 0:
-        raise ValueError(f"numerator_sq = c_final.T @ Sigma @ c_final = {numerator_sq:.6e} is negative. " +
-                         f"This indicates Sigma is not positive semidefinite or there's a computational error.")
+        raise ValueError(
+            f"numerator_sq = c_final.T @ Sigma @ c_final = {numerator_sq:.6e} is negative. "
+            f"This indicates Sigma is not positive semidefinite or there's a computational error."
+        )
     
     numerator = np.sqrt(numerator_sq)
     denominator = np.sqrt(np.trace(Sigma)) # note this is equal to Frobenius norm of G
@@ -403,7 +422,10 @@ if __name__ == "__main__":
                 break
     else:
         # Fallback: use uniform coefficients that meet the threshold
-        print(f"Warning: Could not generate coefficients >= {min_coeff_value} after {max_attempts} attempts.")
+        print(
+            f"Warning: Could not generate coefficients >= {min_coeff_value} "
+            f"after {max_attempts} attempts."
+        )
         print("Using uniform coefficients as fallback.")
         coeffs = np.ones(k_demo) * min_coeff_value
         coeffs /= np.linalg.norm(coeffs)
@@ -412,13 +434,23 @@ if __name__ == "__main__":
     # Verify the constraint is satisfied
     nonzero_coeffs = true_c[true_indices]
     min_abs_coeff = np.min(np.abs(nonzero_coeffs))
-    print(f"Generated true_c with minimum absolute coefficient: {min_abs_coeff:.6f} (threshold: {min_coeff_value})")
-    assert min_abs_coeff >= min_coeff_value, f"Minimum coefficient {min_abs_coeff:.6f} is below threshold {min_coeff_value}"
+    print(
+        f"Generated true_c with minimum absolute coefficient: {min_abs_coeff:.6f} "
+        f"(threshold: {min_coeff_value})"
+    )
+    assert min_abs_coeff >= min_coeff_value, (
+        f"Minimum coefficient {min_abs_coeff:.6f} is below threshold {min_coeff_value}"
+    )
     
     # Generate measurement matrix G such that G @ true_c ≈ 0, then set Sigma = G^T @ G
     # This creates a more realistic sparse recovery scenario
-    print(f"Generating {m_demo} x {w_demo} measurement matrix G such that G @ true_c ≈ 0")
-    print(f"System type: {'Overdetermined' if m_demo > w_demo else 'Underdetermined' if m_demo < w_demo else 'Square'} ({m_demo}x{w_demo})")
+    print(
+        f"Generating {m_demo} x {w_demo} measurement matrix G such that G @ true_c ≈ 0"
+    )
+    print(
+        f"System type: {'Overdetermined' if m_demo > w_demo else 'Underdetermined' if m_demo < w_demo else 'Square'} "
+        f"({m_demo}x{w_demo})"
+    )
     
     # Method: Create G whose rows are orthogonal to true_c, then add noise
     G = np.random.randn(m_demo, w_demo)
@@ -450,15 +482,22 @@ if __name__ == "__main__":
     if min_eig < min_eig_threshold:
         regularization = abs(min_eig) + regularization_amount
         Sigma_demo += regularization * np.identity(w_demo)
-        print(f"Regularized Sigma by adding {regularization:.2e} * I to ensure positive definiteness")
-        print(f"Sigma min eigenvalue after regularization: {np.linalg.eigvalsh(Sigma_demo).min():.6e}")
+        print(
+            f"Regularized Sigma by adding {regularization:.2e} * I to ensure positive definiteness"
+        )
+        print(
+            f"Sigma min eigenvalue after regularization: "
+            f"{np.linalg.eigvalsh(Sigma_demo).min():.6e}"
+        )
 
     # Compute and display the smallest 5 singular values of Sigma
     singular_values = np.linalg.svd(Sigma_demo, compute_uv=False)
     smallest_5_singular_values = np.sort(singular_values)[:5]
     print(f"Smallest 5 singular values of Sigma: {smallest_5_singular_values}")
 
-    print(f"Attempting greedy rounding regression for w={w_demo} terms and sparsity k={k_demo}...")
+    print(
+        f"Attempting greedy rounding regression for w={w_demo} terms and sparsity k={k_demo}..."
+    )
     # Set verbose=False for clean output, True to see Gurobi solver details
     c_solution, residual, cutting_info = greedy_rounding(Sigma_demo, k_demo, max_cuts=max_cuts_demo, 
                                            cut_type="trailing_eigenvalue", verbose=True, warm_start=True)
@@ -467,16 +506,27 @@ if __name__ == "__main__":
     # Print cutting plane information
     if cutting_info['cuts_added'] > 0:
         for i, violation in enumerate(cutting_info['cut_violations'], 1):
-            print(f"Added {cutting_info['violation_type']} cut {i} (violation: {violation:.6e}).")
+            print(
+                f"Added {cutting_info['violation_type']} cut {i} (violation: {violation:.6e})."
+            )
         if not cutting_info['converged']:
             print(f"Reached maximum cuts ({max_cuts_demo}) without full convergence.")
     else:
         if cutting_info['violation_type'] == "eigenvalue":
-            print("X is approximately positive semidefinite after 0 cuts (tolerance). Stopping iterative cutting.")
+            print(
+                "X is approximately positive semidefinite after 0 cuts (tolerance). "
+                "Stopping iterative cutting."
+            )
         elif cutting_info['violation_type'] == "nuclear_norm":
-            print("Nuclear norm condition satisfied after 0 cuts (tolerance). Stopping iterative cutting.")
+            print(
+                "Nuclear norm condition satisfied after 0 cuts (tolerance). "
+                "Stopping iterative cutting."
+            )
     
-    print(f"Cutting plane summary: {cutting_info['cuts_added']} cuts added, final {cutting_info['violation_type']} violation: {cutting_info['final_violation']:.6e}")
+    print(
+        f"Cutting plane summary: {cutting_info['cuts_added']} cuts added, "
+        f"final {cutting_info['violation_type']} violation: {cutting_info['final_violation']:.6e}"
+    )
 
     print("\n--- Solution Summary ---")
     print(f"Requested sparsity (k): {k_demo}")
@@ -501,13 +551,19 @@ if __name__ == "__main__":
 
     print("\n--- Comparison to True (Synthetic) Support ---")
     print(f"True non-zero indices: {[int(idx) for idx in sorted_true_indices]}")
-    print(f"Identified non-zero indices: {[int(idx) for idx in sorted_by_abs_value_indices]}")
+    print(
+        f"Identified non-zero indices: {[int(idx) for idx in sorted_by_abs_value_indices]}"
+    )
 
     intersection = np.intersect1d(true_indices, identified_nonzero_indices)
     precision = len(intersection) / len(identified_nonzero_indices) if len(identified_nonzero_indices) > 0 else 0
     recall = len(intersection) / len(true_indices) if len(true_indices) > 0 else 0
     f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
 
-    print(f"Precision (proportion of identified indices that are truly relevant): {precision:.2f}")
-    print(f"Recall (proportion of truly relevant indices that were identified): {recall:.2f}")
+    print(
+        f"Precision (proportion of identified indices that are truly relevant): {precision:.2f}"
+    )
+    print(
+        f"Recall (proportion of truly relevant indices that were identified): {recall:.2f}"
+    )
     print(f"F1-score (harmonic mean of precision and recall): {f1_score:.2f}")

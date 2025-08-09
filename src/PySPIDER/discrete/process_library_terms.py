@@ -7,11 +7,16 @@ import scipy
 from scipy.stats._stats import gaussian_kernel_estimate
 from scipy.ndimage import gaussian_filter1d
 # uncomment the next line if it isn't broken for you
-from .coarse_grain_utils import poly_coarse_grain_time_slices #coarse_grain_time_slices, 
+# coarse_grain_time_slices,
+from .coarse_grain_utils import poly_coarse_grain_time_slices 
 
-from ..commons.process_library_terms import AbstractDataset, IntegrationDomain, LibraryData, int_by_parts, diff
+from ..commons.process_library_terms import (
+    AbstractDataset, IntegrationDomain, LibraryData, int_by_parts, diff
+)
 from ..commons.library import LibraryPrime #, Observable
-from ..commons.z3base import LiteralIndex, FullRank, Antisymmetric, SymmetricTraceFree
+from ..commons.z3base import (
+    LiteralIndex, FullRank, Antisymmetric, SymmetricTraceFree
+)
 from ..commons.utils import regex_find
 from .convolution import gauss1d
 from .library import generate_terms_to #, CoarseGrainedProduct
@@ -19,15 +24,19 @@ from .library import generate_terms_to #, CoarseGrainedProduct
 import concurrent.futures
 from collections import defaultdict
 
-#function for initializing global variables for each parallel worker process (discrete version)
-def discrete_init_domain_worker(dataset_init, current_irrep_init, by_parts_init, debug_init):
+# function for initializing global variables for each parallel worker process 
+# (discrete version)
+def discrete_init_domain_worker(
+    dataset_init, current_irrep_init, by_parts_init, debug_init
+):
     global worker_dataset, worker_current_irrep, worker_by_parts, worker_debug
     worker_dataset = dataset_init
     worker_current_irrep = current_irrep_init
     worker_by_parts = by_parts_init
     worker_debug = debug_init
 
-#function to be executed in parallel to evaluate all terms for a given domain (discrete version with rho handling)
+# function to be executed in parallel to evaluate all terms for a given domain 
+# (discrete version with rho handling)
 def discrete_parallel_domain_task(domain):
     dataset = worker_dataset
     irrep = worker_current_irrep
@@ -50,46 +59,62 @@ def discrete_parallel_domain_task(domain):
         for key in dataset.field_dict.keys():
             if len(key) == 2 and key[1] == domain:
                 prime = key[0]
-                # Check if this prime corresponds to rho (string representation is exactly 'ρ')
-                if hasattr(prime, '__str__') and 'ρ'==str(prime):
+                # Check if this prime corresponds to rho 
+                # (string representation is exactly 'ρ')
+                if hasattr(prime, '__str__') and 'ρ' == str(prime):
                     rho_data = dataset.field_dict[key]
                     rho_std_for_domain = np.std(rho_data)
                     break  # Found ρ prime, no need to continue
         
         # Free up memory by removing cached field_dict entries for this domain
-        keys_to_remove = [key for key in dataset.field_dict.keys() if len(key) == 2 and key[1] == domain]
+        keys_to_remove = [
+            key for key in dataset.field_dict.keys() 
+            if len(key) == 2 and key[1] == domain
+        ]
         for key in keys_to_remove:
             del dataset.field_dict[key]
     
     return domain, domain_results_dict, rho_std_for_domain
 
 @dataclass(kw_only=True)
-class SRDataset(AbstractDataset):  # structures all data associated with a given sparse regression dataset
-    particle_pos: np.ndarray[float]  # array of particle positions (particle, spatial index, time)
-    kernel_sigma: float # standard deviation of kernel in physical units (scalar for now)
-    # subsampling factor when computing coarse-graining, i.e. cg_res points per unit length; should generally just
-    # be an integer
+# structures all data associated with a given sparse regression dataset
+class SRDataset(AbstractDataset):
+    # array of particle positions (particle, spatial index, time)
+    particle_pos: np.ndarray[float]
+    # standard deviation of kernel in physical units (scalar for now)
+    kernel_sigma: float
+    # subsampling factor when computing coarse-graining, i.e. cg_res points 
+    # per unit length; should generally just be an integer
     cg_res: float
     deltat: float
     # not sure what the type-hinting was supposed to be here
-    domain_neighbors: dict[tuple[IntegrationDomain, float], int] = None # indices of neighbors of each ID at given time
-    cutoff: float=6 # how many std deviations to cut off Gaussian weight functions at
-    rho_scale: float=1 # density rescaling factor
-    time_sigma: float=0 # standard deviation for temporal smoothing kernel (0 = no smoothing)
-    #field_dict: dict[tuple[Any], np.ndarray[float]] = None # storage of computed coarse-grained quantities: (cgp, dims, domains) -> array
+    # indices of neighbors of each ID at given time
+    domain_neighbors: dict[tuple[IntegrationDomain, float], int] = None
+    # how many std deviations to cut off Gaussian weight functions at
+    cutoff: float = 6
+    # density rescaling factor
+    rho_scale: float = 1
+    # standard deviation for temporal smoothing kernel (0 = no smoothing)
+    time_sigma: float = 0
+    # field_dict: dict[tuple[Any], np.ndarray[float]] = None 
+    # storage of computed coarse-grained quantities: (cgp, dims, domains) -> array
     
     # Storage for rho statistics computed during parallel processing
     rho_domain_stds: list[float] = None
     
-    #cgps: set[CoarseGrainedPrimitive] = None # list of coarse-grained primitives involved
+    # cgps: set[CoarseGrainedPrimitive] = None 
+    # list of coarse-grained primitives involved
 
     def __post_init__(self):
         super().__post_init__()
         self.scaled_sigma = self.kernel_sigma * self.cg_res
         self.scaled_pts = self.particle_pos * self.cg_res
-        self.dxs = [1 / self.cg_res] * (self.n_dimensions - 1) + [float(self.deltat)]  # spacings of sampling grid
+        # spacings of sampling grid
+        self.dxs = ([1 / self.cg_res] * (self.n_dimensions - 1) + 
+                    [float(self.deltat)])
         self.rho_domain_stds = None  # Initialize rho statistics storage
-        #self.rho_scale = self.particle_pos.shape[0]/np.prod(self.world_size[:-1]) # mean number density
+        # self.rho_scale = (self.particle_pos.shape[0] / 
+        #                   np.prod(self.world_size[:-1]))  # mean number density
         #self.cgps = set()
 
     def make_libraries(self, **kwargs):
@@ -98,26 +123,38 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
         for irrep in self.irreps:
             match irrep:
                 case int():
-                    self.libs[irrep] = LibraryData([term for term in terms if term.rank == irrep], irrep)
+                    self.libs[irrep] = LibraryData(
+                        [term for term in terms if term.rank == irrep], irrep
+                    )
                 case FullRank():
-                    self.libs[irrep] = LibraryData([term for term in terms if term.rank == irrep.rank], irrep)
+                    self.libs[irrep] = LibraryData(
+                        [term for term in terms if term.rank == irrep.rank], irrep
+                    )
                 case Antisymmetric():
-                    self.libs[irrep] = LibraryData([term for term in terms if term.rank == irrep.rank 
-                                                    and term.symmetry() != 1], irrep)
+                    self.libs[irrep] = LibraryData(
+                        [term for term in terms if term.rank == irrep.rank 
+                         and term.symmetry() != 1], irrep
+                    )
                 case SymmetricTraceFree():
-                    self.libs[irrep] = LibraryData([term for term in terms if term.rank == irrep.rank 
-                                                    and term.symmetry() != -1], irrep)
+                    self.libs[irrep] = LibraryData(
+                        [term for term in terms if term.rank == irrep.rank 
+                         and term.symmetry() != -1], irrep
+                    )
                 case _:
-                    raise NotImplemented
+                    raise NotImplementedError
 
     def make_domains(self, ndomains, domain_size, pad=0, t_pad=0):
         self.domains = []
-        scaled_dims = [int(s * self.cg_res) for s in domain_size[:-1]] + [domain_size[-1]]  # self.interp_factor *
-        scaled_world_size = [int(s * self.cg_res) for s in self.world_size[:-1]] + [
-            self.world_size[-1]]  # self.interp_factor *
+        # self.interp_factor *
+        scaled_dims = ([int(s * self.cg_res) for s in domain_size[:-1]] + 
+                       [domain_size[-1]])
+        # self.interp_factor *
+        scaled_world_size = ([int(s * self.cg_res) for s in self.world_size[:-1]] + 
+                             [self.world_size[-1]])
         # padding by pad in original units on spatial dims
         self.pad = pad # record the padding used
-        pads = [np.ceil(pad * self.cg_res) for s in domain_size[:-1]] + [t_pad] 
+        pads = ([np.ceil(pad * self.cg_res) for s in domain_size[:-1]] + 
+                [t_pad]) 
         self.domain_size = scaled_dims
         for i in range(ndomains):
             min_corner = []
@@ -128,14 +165,16 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
                 num = np.random.randint(pad_i, max_lim - (L + pad_i) + 1)
                 min_corner.append(num)
                 max_corner.append(num + L - 1)
-            # (potentially) less messy if we fix beginning/end of time extent to the actual measurements
+            # (potentially) less messy if we fix beginning/end of time extent 
+            # to the actual measurements
             # time_fraction = min_corner % self.interp_factor
             # min_corner -= time_fraction
             # max_corner -= time_fraction
             self.domains.append(IntegrationDomain(min_corner, max_corner))
 
     def find_domain_neighbors(self):
-        # list of indices corresponding to particles needed to compute quantities on each domain at each t
+        # list of indices corresponding to particles needed to compute quantities 
+        # on each domain at each t
         self.domain_neighbors = dict()
         for domain in self.domains:
             for t in domain.times:
@@ -145,7 +184,10 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
                     if dist <= self.scaled_sigma * self.cutoff:
                         self.domain_neighbors[domain, t].append(i)
 
-    def eval_prime(self, prime: LibraryPrime, domain: IntegrationDomain, experimental: bool = True, order: int = 4):
+    def eval_prime(
+        self, prime: LibraryPrime, domain: IntegrationDomain, 
+        experimental: bool = True, order: int = 4
+    ):
         cgp = prime.derivand
         if self.n_dimensions != 3:
             if experimental:
@@ -157,7 +199,9 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
             time_buffer = int(np.ceil(min(4, self.cutoff) * self.time_sigma))
             # Extend time range for smoothing, but respect data boundaries
             extended_min_time = max(0, domain.min_corner[-1] - time_buffer)
-            extended_max_time = min(self.scaled_pts.shape[2] - 1, domain.max_corner[-1] + time_buffer)
+            extended_max_time = min(
+                self.scaled_pts.shape[2] - 1, domain.max_corner[-1] + time_buffer
+            )
             extended_times = list(range(extended_min_time, extended_max_time + 1))
             extended_shape = domain.shape[:-1] + [len(extended_times)]
         else:
@@ -166,7 +210,8 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
         
         data_slice = np.zeros(extended_shape)
         if experimental:
-            pt_pos = self.scaled_pts[:, :, extended_times] / self.cg_res  # Unscaled positions
+            # Unscaled positions
+            pt_pos = self.scaled_pts[:, :, extended_times] / self.cg_res
             pt_pos = np.float64(pt_pos)
             weights = np.ones_like(pt_pos[:, 0, :], dtype=np.float64)
             for obs in cgp.observables:
@@ -190,7 +235,9 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
             ]).T
             dist = sigma*np.sqrt(3+2*order)
             # uncomment if this isn't broken for you
-            data_slice = poly_coarse_grain_time_slices(pt_pos, weights, xi, order, dist) 
+            data_slice = poly_coarse_grain_time_slices(
+                pt_pos, weights, xi, order, dist
+            ) 
             data_slice = data_slice.reshape(extended_shape)
         else:
             if self.domain_neighbors is None:
@@ -216,18 +263,27 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
                         weights *= data.astype(np.float64)
                         #obs_dim_ind += obs.rank
                     sigma = self.scaled_sigma ** 2 / (self.cg_res ** 2)
-                    # Check scipy version. If it's lower than 1.10, use inverse_covariance, otherwise use Cholesky
-                    if int(scipy.__version__.split(".")[0]) <= 1 and int(scipy.__version__.split(".")[1]) < 10:
+                    # Check scipy version. If it's lower than 1.10, use inverse_covariance, 
+                    # otherwise use Cholesky
+                    if (int(scipy.__version__.split(".")[0]) <= 1 and 
+                        int(scipy.__version__.split(".")[1]) < 10):
                         inv_cov = np.eye(2) / sigma
                     else:
                         inv_cov = np.eye(2) * sigma
                         inv_cov = np.linalg.cholesky(inv_cov[::-1, ::-1]).T[::-1, ::-1]
                     min_corner = domain.min_corner[:-1]
                     max_corner = domain.max_corner[:-1]
-                    xx, yy = np.mgrid[min_corner[0]:(max_corner[0] + 1), min_corner[1]:(max_corner[1] + 1)]
-                    positions = np.vstack([(xx / self.cg_res).ravel(), (yy / self.cg_res).ravel()]).T
-                    density = gaussian_kernel_estimate['double'](pt_pos, weights[:, None], positions, inv_cov,
-                                                                 np.float64)
+                    xx, yy = np.mgrid[
+                        min_corner[0]:(max_corner[0] + 1), 
+                        min_corner[1]:(max_corner[1] + 1)
+                    ]
+                    positions = np.vstack([
+                        (xx / self.cg_res).ravel(), 
+                        (yy / self.cg_res).ravel()
+                    ]).T
+                    density = gaussian_kernel_estimate['double'](
+                        pt_pos, weights[:, None], positions, inv_cov, np.float64
+                    )
                     time_slice = np.reshape(density[:, 0], xx.shape)
 
                     data_slice[..., t] = time_slice / (self.cg_res ** 2)
@@ -248,23 +304,32 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
                         # coarse-graining this particle (one dimension at a time)
                         rngs = []
                         g_nd = 1
-                        for coord, d_min, d_max, j in zip(pt_pos, domain.min_corner, domain.max_corner,
-                                                          range(self.n_dimensions - 1)):
+                        for coord, d_min, d_max, j in zip(
+                            pt_pos, domain.min_corner, domain.max_corner,
+                            range(self.n_dimensions - 1)
+                        ):
                             # recenter so that 0 is start of domain
-                            g, mn, mx = gauss1d(coord - d_min, self.scaled_sigma, truncate=self.cutoff,
-                                                xmin=0, xmax=d_max - d_min)
+                            g, mn, mx = gauss1d(
+                                coord - d_min, self.scaled_sigma, 
+                                truncate=self.cutoff, xmin=0, xmax=d_max - d_min
+                            )
                             g_nd = np.multiply.outer(g_nd, g)
-                            rng_array = np.array(range(mn, mx))  # coordinate range of kernel
+                            # coordinate range of kernel
+                            rng_array = np.array(range(mn, mx))
                             # now need to add free axes so that the index ends up as an (n-1)-d array
-                            n_free_dims = self.n_dimensions - j - 2  # how many np.newaxis to add to index
-                            expanded_rng_array = np.expand_dims(rng_array, axis=tuple(range(1, 1 + n_free_dims)))
+                            # how many np.newaxis to add to index
+                            n_free_dims = self.n_dimensions - j - 2
+                            expanded_rng_array = np.expand_dims(
+                                rng_array, axis=tuple(range(1, 1 + n_free_dims))
+                            )
                             rngs.append(expanded_rng_array)
                         # if len((g_nd*coeff).shape) > len(time_slice.shape):
                         #    print(rngs, g_nd.shape, coeff)
                         time_slice[tuple(rngs)] += g_nd * coeff
                     data_slice[..., t] = time_slice
         if not experimental:
-            data_slice *= self.cg_res ** (self.n_dimensions - 1)  # need to scale rho by res^(# spatial dims)!
+            # need to scale rho by res^(# spatial dims)!
+            data_slice *= self.cg_res ** (self.n_dimensions - 1)
 
         # rescale prime to rho=1 units
         data_slice /= self.rho_scale
@@ -294,29 +359,37 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
         for name in self.data_dict:
             if names is None or name in names:
                 self.scale_dict[name] = dict()
-                # if these are vector quantities the results could be wonky in the unlikely
-                # case a vector field is consistently aligned with one of the axes
+                # if these are vector quantities the results could be wonky in the 
+                # unlikely case a vector field is consistently aligned with one of the axes
                 self.scale_dict[name]['mean'] = np.mean(
-                    np.linalg.norm(self.data_dict[name]) / np.sqrt(self.data_dict[name].size))
+                    np.linalg.norm(self.data_dict[name]) / 
+                    np.sqrt(self.data_dict[name].size)
+                )
                 self.scale_dict[name]['std'] = np.std(self.data_dict[name])
         # also need to handle density separately
         self.scale_dict['rho'] = dict()
         #self.rho_scale = self.particle_pos.shape[0] / np.prod(self.world_size[:-1])
-        self.scale_dict['rho']['mean'] = self.particle_pos.shape[0] / np.prod(self.world_size[:-1]) / self.rho_scale
+        self.scale_dict['rho']['mean'] = (
+            self.particle_pos.shape[0] / np.prod(self.world_size[:-1]) / self.rho_scale
+        )
 
-        # Use precomputed rho standard deviations if available (from parallel processing)
+        # Use precomputed rho standard deviations if available 
+        # (from parallel processing)
         if hasattr(self, 'rho_domain_stds') and self.rho_domain_stds is not None:
             # Compute RMS of per-domain standard deviations
             rho_std = np.sqrt(np.mean(np.array(self.rho_domain_stds) ** 2))
             self.scale_dict['rho']['std'] = rho_std
         else:
-            # Fallback to original method if parallel processing wasn't used or cleanup was disabled
+            # Fallback to original method if parallel processing wasn't used 
+            # or cleanup was disabled
             #print(self.field_dict.keys())
             all_cgps = [key[0] for key in self.field_dict.keys()]
             rho_matches = regex_find(all_cgps, r'ρ')
             rho_ind = next(rho_matches)[0]
             rho = all_cgps[rho_ind]
-            all_rho_data = np.dstack([self.field_dict[rho, domain] for domain in self.domains])
+            all_rho_data = np.dstack([
+                self.field_dict[rho, domain] for domain in self.domains
+            ])
             rho_std = np.std(all_rho_data)
             self.scale_dict['rho']['std'] = rho_std
 
@@ -365,7 +438,9 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
                 for tensor_weight in self.tensor_weight_basis[(irrep, weight)].tw_list:
                     if debug:
                         print("Tensor weight:", tensor_weight)
-                    for indexed_term, scalar_weight in self.get_index_assignments(term,tensor_weight): #, debug
+                    for indexed_term, scalar_weight in self.get_index_assignments(
+                        term, tensor_weight
+                    ):  # , debug
                         if debug:
                             print("ASSIGNMENTS:", term, "->")
                             print("Indexed term:", indexed_term)
@@ -375,10 +450,16 @@ class SRDataset(AbstractDataset):  # structures all data associated with a given
                                 print("INT BY PARTS:", indexed_term, "->")
                                 print("Integrated term:", t)
                                 print("Integrated weight:", w)
-                            self.integrated_terms_tuples.append((t,w,term,tensor_weight))
+                            self.integrated_terms_tuples.append(
+                                (t, w, term, tensor_weight)
+                            )
 
         #begin parallel task execution
-        with concurrent.futures.ProcessPoolExecutor(max_workers=num_processors, initializer=discrete_init_domain_worker, initargs=init_args) as executor:
+        with concurrent.futures.ProcessPoolExecutor(
+            max_workers=num_processors, 
+            initializer=discrete_init_domain_worker, 
+            initargs=init_args
+        ) as executor:
             results = executor.map(discrete_parallel_domain_task, domains)
             for result in results:
                 domain, domain_results, rho_std = result
