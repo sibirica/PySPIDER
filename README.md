@@ -58,5 +58,5 @@ We have plenty of ideas for improving SPIDER, ranging from relatively simple cod
 Thank you for checking out PySPIDER! Please let us know if you encounter any issues using this code or have comments or questions.
 
 Daniel Gurevich\
-dgurevich@princeton.edu
+dgurevich@ucla.edu
 
