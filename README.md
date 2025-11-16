@@ -45,7 +45,7 @@ The package is organized into three groups of modules:
 ## Using PySPIDER for your project
 Please feel free to contact us if you are interested in using PySPIDER for a project. We are happy to help you set it up for your problem of interest.
 
-If you use PySPIDER, please cite the following [paper](https://www.cambridge.org/core/journals/journal-of-fluid-mechanics/article/learning-fluid-physics-from-highly-turbulent-data-using-sparse-physicsinformed-discovery-of-empirical-relations-spider/FB279BC082B965AFCCD768FD50ACEB08) as well as (check back later):
+If you use PySPIDER, please cite the following:
 
 ```
 @article{gurevich_learning_2024,  
@@ -55,6 +55,14 @@ If you use PySPIDER, please cite the following [paper](https://www.cambridge.org
 	volume = {996},  
 	year = {2024},  
 	pages = {A25}  
+},
+@phdthesis{gurevich_phd,
+  author  = "Daniel Gurevich",
+  title   = "Data-driven inference of
+symmetry-equivariant models of
+natural phenomena",
+  school  = "Princeton University",
+  year    = "2025"
 }
 ```
 
