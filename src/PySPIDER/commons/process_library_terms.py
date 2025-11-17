@@ -430,7 +430,7 @@ class AbstractDataset(object): # template for structure of all data associated w
         for q in lists_for_N(self.n_dimensions, qmax):
             if symmetry == "even" and any(q_i % 2 == 1 for q_i in q):
                 continue
-            if symmetry == "odd" and any(q_i % 2 == 0 for q_i in q):
+            elif symmetry == "odd" and any(q_i % 2 == 0 for q_i in q):
                 continue
             weight = Weight([m] * self.n_dimensions, q, [0] * self.n_dimensions, dxs=self.weight_dxs)
             self.weights.append(weight)
