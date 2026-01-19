@@ -10,7 +10,7 @@ from collections import defaultdict
 
 from ..commons.z3base import generate_indexings
 from ..commons.library import (
-    Observable, LibraryPrime, LibraryTerm, ConstantTerm, DerivativeOrder, partition
+    Observable, Constant, LibraryPrime, LibraryTerm, ConstantTerm, DerivativeOrder, partition
 )
 
 def generate_terms_to(
@@ -37,6 +37,11 @@ def generate_terms_to(
     max_observable_counts = (defaultdict(lambda: 999) 
                              if max_observable_counts is None 
                              else max_observable_counts)
+    #ensure algebraic constants appear only once in each term (currently doesn't allow manual
+    #override of this restriction)
+    for obs in observables:
+        if isinstance(obs, Constant):
+            max_observable_counts[obs] = 1
     
     libterms = list()
     n = max_complexity  # max number of "blocks" to include
@@ -46,11 +51,18 @@ def generate_terms_to(
     weights = [obs.complexity for obs in observables]
     # generate partitions in bijection to all possible primes
     for i in range(k):
-        # ith observable + 2 derivative dimensions
-        for part in partition(n-weights[i], 2, weights=(1, 1)):
-            # ensure that highest derivative along spatial/time axes does not exceed max
-            if part[0] <= max_dt and part[1] <= max_dx:
-                pairs.append((observables[i], part))
+        current_obs = observables[i]
+        #ensure no derivatives are taken of Constants
+        match current_obs:
+            case Constant():
+                if weights[i] <= n:
+                    pairs.append((current_obs, (0,0)))
+            case _:
+                # ith observable + 2 derivative dimensions
+                for part in partition(n-weights[i], 2, weights=(1, 1)):
+                    # ensure that highest derivative along spatial/time axes does not exceed max
+                    if part[0] <= max_dt and part[1] <= max_dx:
+                        pairs.append((current_obs, part))
 
     def pair_to_prime(observable, part):
         derivative = DerivativeOrder.blank_derivative(

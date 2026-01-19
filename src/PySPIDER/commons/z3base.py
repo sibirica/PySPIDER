@@ -31,11 +31,21 @@ class SymmetricTraceFree(SymmetryRep):
         return f"Symmetric trace-free rank {self.rank}"
 
 @dataclass(frozen=True)
+class STFDiagonal(SymmetryRep):
+    def __repr__(self):
+        return f"Symmetric trace-free diagonal rank {self.rank}"
+
+@dataclass(frozen=True)
+class STFOffDiagonal(SymmetryRep):
+    def __repr__(self):
+        return f"Symmetric trace-free off-diagonal rank {self.rank}"
+
+@dataclass(frozen=True)
 class FullRank(SymmetryRep):
     def __repr__(self):
         return f"Rank {self.rank}"
 
-Irrep = Antisymmetric | SymmetricTraceFree | FullRank
+Irrep = Antisymmetric | SymmetricTraceFree | FullRank | STFDiagonal | STFOffDiagonal
 
 @dataclass(frozen=True)
 class IndexHole:

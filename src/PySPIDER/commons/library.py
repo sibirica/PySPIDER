@@ -394,6 +394,26 @@ class ConstantTerm(Observable):
     def derivs_along(self, dim): # number of derivatives along 'dim' index
         return 0
 
+@dataclass(frozen=True, repr=False)
+class Constant(Observable):
+    """ Subclass of Observable representing relevant tensors that are constant in space and time """
+
+    custom_complexity: Optional[int] = None
+    allow_contractions: bool = True
+
+    @cached_property
+    def complexity(self): #Should we return max(custom_complexity,1) or give the user freedom?
+        return self.custom_complexity if self.custom_complexity is not None else max(self.rank, 1)
+
+    def eq_canon(self):
+        inds = self.indices
+        if self.can_commute_indices:
+            inds = tuple(sorted(inds))
+        sign = parity(self.indices, inds) if self.antisymmetric else 1
+        return Constant(string=self.string, indices=inds, rank=self.rank, custom_complexity=self.custom_complexity,
+                          allow_contractions=self.allow_contractions, can_commute_indices=self.can_commute_indices, 
+                          antisymmetric=self.antisymmetric), sign
+
 @dataclass(frozen=True)
 class LibraryPrime[T, Derivand](EinSumExpr):
     """

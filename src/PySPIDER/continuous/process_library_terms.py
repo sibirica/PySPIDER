@@ -3,8 +3,9 @@ import numpy as np
 from ..commons.process_library_terms import (
     AbstractDataset, IntegrationDomain, LibraryData, diff, get_slice
 )
-from ..commons.z3base import LiteralIndex, FullRank, Antisymmetric, SymmetricTraceFree
-from .library import generate_terms_to
+from ..commons.z3base import LiteralIndex, FullRank, Antisymmetric, SymmetricTraceFree, STFDiagonal, STFOffDiagonal
+from .library import (generate_terms_to, Constant
+)
 
 class SRDataset(AbstractDataset):
     # field_dict: dict[tuple[Any], np.ndarray[float]] = None 
@@ -30,19 +31,34 @@ class SRDataset(AbstractDataset):
         #print(obs_inds)
 
         data_arr = self.data_dict[name][..., *obs_inds]
-        data_slice = get_slice(data_arr, domain)
 
         orders = prime.derivative.get_spatial_orders()
         dimorders = [orders[LiteralIndex(i)] 
-                     for i in range(self.n_dimensions-1)]
+                    for i in range(self.n_dimensions-1)]
         dimorders += [prime.derivative.torder]
-        #print(prime.derivative, dimorders)
-        return (diff(data_slice, dimorders, self.dxs) 
-                if sum(dimorders) > 0 else data_slice)
+
+        match prime.derivand:
+            case Constant():
+                return (np.zeros(domain.shape) if sum(dimorders) > 0 
+                        else np.full(domain.shape,data_arr)) #Could instead change get_slice to have alternative behavior for Constant
+            case _:
+                data_slice = get_slice(data_arr, domain)
+                #print(prime.derivative, dimorders)
+                return (diff(data_slice, dimorders, self.dxs) 
+                        if sum(dimorders) > 0 else data_slice)
     
     def make_libraries(self, **kwargs):
         self.libs = dict()
-        terms = generate_terms_to(observables=self.observables, **kwargs)
+        unfiltered_terms = generate_terms_to(observables=self.observables, **kwargs)
+        #filter out terms with disallowed internal contractions
+        terms = [term for term in unfiltered_terms
+                 if all(
+                     not isinstance(prime.derivand,Constant)
+                     or prime.derivand.allow_contractions
+                     or len(prime.derivand.indices) == len(set(prime.derivand.indices))
+                     for prime in term.primes)
+                 ]
+
         for irrep in self.irreps:
             match irrep:
                 case int():
@@ -58,7 +74,7 @@ class SRDataset(AbstractDataset):
                         [term for term in terms if term.rank == irrep.rank 
                          and term.symmetry() != 1], irrep
                     )
-                case SymmetricTraceFree():
+                case SymmetricTraceFree() | STFOffDiagonal() | STFDiagonal():
                     self.libs[irrep] = LibraryData(
                         [term for term in terms if term.rank == irrep.rank 
                          and term.symmetry() != -1], irrep

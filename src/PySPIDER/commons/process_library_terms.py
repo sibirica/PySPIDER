@@ -11,7 +11,7 @@ from collections import defaultdict
 import concurrent.futures
 
 from .z3base import (
-    highest_index, Irrep, FullRank, SymmetricTraceFree, Antisymmetric, LiteralIndex
+    highest_index, Irrep, FullRank, SymmetricTraceFree, Antisymmetric, STFDiagonal, STFOffDiagonal, LiteralIndex
 )
 from .library import LibraryTerm, ConstantTerm, Observable, ES_prod
 from .weight import weight_1d
@@ -255,6 +255,38 @@ class TensorWeightBasis: # basis of TensorWeights to span desired space
                 tw_list.append(FactoredTensorWeight.constant_tw(base_weight, tensor))
                 nz_inds += [(i, j), (j, i)]
         return TensorWeightBasis(tw_list, nz_inds)
+    
+    @staticmethod
+    def stf_diag_rank2_basis(base_weight, n_dimensions): #form all basis elements for rank 2 STF diagonal irrep
+        tw_list = []
+        nz_inds = []
+        it = multi_index_iterator(n_dimensions, rank=2)
+        for x in it:
+            i, j = it.multi_index
+            tensor = np.zeros(shape=(n_dimensions, n_dimensions))
+            if i == j:
+                nz_inds.append((i,i))
+                if i==0:
+                    continue
+                tensor[0,0] = 1
+                tensor[i,i] = -1
+                tw_list.append(FactoredTensorWeight.constant_tw(base_weight, tensor))
+        return TensorWeightBasis(tw_list, nz_inds)
+
+    @staticmethod
+    def stf_offdiag_rank2_basis(base_weight, n_dimensions): #form all basis elements for rank 2 STF off-diagonal irrep
+        tw_list = []
+        nz_inds = []
+        it = multi_index_iterator(n_dimensions, rank=2)
+        for x in it:
+            i, j = it.multi_index
+            tensor = np.zeros(shape=(n_dimensions, n_dimensions))
+            if i<j:
+                tensor[i, j] = 1
+                tensor[j, i] = 1
+                tw_list.append(FactoredTensorWeight.constant_tw(base_weight, tensor))
+                nz_inds += [(i, j), (j, i)]
+        return TensorWeightBasis(tw_list, nz_inds)
 
     @staticmethod
     def anti_rank2_basis(base_weight, n_dimensions): # form all basis elements for rank 2 antisymmetric irrep
@@ -299,6 +331,10 @@ class TensorWeightBasis: # basis of TensorWeights to span desired space
                 return TensorWeightBasis.anti_rank2_basis(base_weight, n_dimensions)
             case SymmetricTraceFree(rank=2):
                 return TensorWeightBasis.stf_rank2_basis(base_weight, n_dimensions)
+            case STFOffDiagonal(rank=2):
+                return TensorWeightBasis.stf_offdiag_rank2_basis(base_weight, n_dimensions)
+            case STFDiagonal(rank=2):
+                return TensorWeightBasis.stf_diag_rank2_basis(base_weight, n_dimensions)
             case _: # shouldn't be reachable under normal conditions
                 print("Warning: weird irrep")
                 if irrep.rank == 0:
@@ -416,6 +452,10 @@ class AbstractDataset(object): # template for structure of all data associated w
     @classmethod
     def only_rank2_irreps(cls):
         return (Antisymmetric(rank=2), SymmetricTraceFree(rank=2)) 
+    
+    @classmethod
+    def all_octahedral_rank2_irreps(cls):
+        return (FullRank(rank=0), FullRank(rank=1), Antisymmetric(rank=2), STFDiagonal(rank=2), STFOffDiagonal(rank=2))
     
     def make_libraries(self, **kwargs): # populate libs
         pass
