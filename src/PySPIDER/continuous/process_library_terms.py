@@ -26,16 +26,22 @@ class SRDataset(AbstractDataset):
 
     def eval_prime(self, prime, domain):
         name = prime.derivand.string
-        # unpack the indices
-        obs_inds = [idx.value for idx in prime.derivand.indices]
-        #print(obs_inds)
-
-        data_arr = self.data_dict[name][..., *obs_inds]
 
         orders = prime.derivative.get_spatial_orders()
         dimorders = [orders[LiteralIndex(i)] 
                     for i in range(self.n_dimensions-1)]
         dimorders += [prime.derivative.torder]
+
+        # unpack the indices
+        obs_inds = [idx.value for idx in prime.derivand.indices]
+        #print(obs_inds)
+
+        if self.dynamic_data_loading:
+            data_slice = self.domain_data[(name,domain)][..., *obs_inds]
+            return (diff(data_slice, dimorders, self.dxs) 
+                        if sum(dimorders) > 0 else data_slice)
+
+        data_arr = self.data_dict[name][..., *obs_inds]
 
         match prime.derivand:
             case Constant():

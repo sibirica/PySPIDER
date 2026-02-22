@@ -382,6 +382,14 @@ def parallel_domain_task(domain):
     debug = worker_debug
 
     domain_results_dict = defaultdict(float)
+    if dataset.dynamic_data_loading:
+        dataset.domain_data = {}
+        domain_stats = {}
+        for obs in dataset.observables:
+            dataset.domain_data[(obs.string, domain)] = dataset.data_loader(obs, domain)
+            domain_stats[obs.string] = {'sumsq': np.sum(dataset.domain_data[(obs.string, domain)]**2),
+                                        'sum': np.sum(dataset.domain_data[(obs.string, domain)]),
+                                        'count': dataset.domain_data[(obs.string, domain)].size}
 
     for t, w, term, tensor_weight in dataset.integrated_terms_tuples:
         if w.scale == 0:
@@ -395,19 +403,29 @@ def parallel_domain_task(domain):
         keys_to_remove = [key for key in dataset.field_dict.keys() if len(key) == 2 and key[1] == domain]
         for key in keys_to_remove:
             del dataset.field_dict[key]
+        if dataset.dynamic_data_loading:
+            dataset.domain_data = {}
     
+    if dataset.dynamic_data_loading:
+        return domain, domain_results_dict, domain_stats
+
     return domain, domain_results_dict
 
 @dataclass(kw_only=True)
 class AbstractDataset(object): # template for structure of all data associated with a given sparse regression dataset
     world_size: list[float] # linear dimensions of dataset in physical units (spatial + time)
-    data_dict: dict[Observable, np.ndarray[float]] # observable -> array of values (e.g. discrete - particle, spatial index, time)
+    data_dict: dict[Observable, np.ndarray[float]] = None # observable -> array of values (e.g. discrete - particle, spatial index, time)
     observables: list[Observable]  # list of observables
     # storage of computed quantities: (prim, domains) [not dims] -> array
     cache_primes: bool = True # whether the field_dict is used
     cleanup_cache: bool = True # whether to clean up field_dict entries after parallel domain processing
     field_dict: dict[tuple[Any, ...], np.ndarray[float]] = None 
     
+    dynamic_data_loading: bool = False #whether to use dynamic data loading
+    data_loader: Callable[[Observable, IntegrationDomain], np.ndarray[float]] = None # takes Observable and retrieves data slice on specified domain
+    domain_data: dict[tuple[str, IntegrationDomain], np.ndarray[float]] = None #stores tensor-valued data slice on current domain
+    data_path: str = None #path to data for use in data_loader
+
     dxs: list[float] = None # grid spacings
     weight_dxs: list[float] = None
     scalar_weights: list[Weight] = None
@@ -630,11 +648,31 @@ class AbstractDataset(object): # template for structure of all data associated w
                                 print("Integrated weight:", w)
                             self.integrated_terms_tuples.append((t,w,term,tensor_weight))
 
+        if self.dynamic_data_loading:
+                global_stats = {}
+                for obs in self.observables:
+                    global_stats[obs.string] = {'sumsq': 0,
+                                                'sum': 0,
+                                                'count': 0}
         #begin parallel task execution
         with concurrent.futures.ProcessPoolExecutor(max_workers=num_processors, initializer=init_domain_worker, initargs=init_args) as executor:
             results = executor.map(parallel_domain_task, domains)
             for result in results:
-                all_results.append(result)
+                domain, domain_results, *stats = result
+                all_results.append((domain, domain_results))
+                if self.dynamic_data_loading:
+                    stats = stats[0]
+                    for obs in self.observables:
+                        name = obs.string
+                        global_stats[name]['sumsq'] += stats[name]['sumsq']
+                        global_stats[name]['sum'] += stats[name]['sum']
+                        global_stats[name]['count'] += stats[name]['count']
+        if self.dynamic_data_loading:
+            self.scale_dict = {}
+            for name in global_stats:
+                rms = np.sqrt(global_stats[name]['sumsq']/global_stats[name]['count'])
+                std = np.sqrt(max(0,rms**2 - (global_stats[name]['sum']/global_stats[name]['count'])**2))
+                self.scale_dict[name] = {'mean': rms, 'std': std}
                   
         terms = list(self.libs[irrep].terms)
         weights = list(self.weights)
@@ -671,7 +709,8 @@ class AbstractDataset(object): # template for structure of all data associated w
                 self.libs[irrep].Q = self.make_Q_parallel(irrep, by_parts, debug, num_processors)
             else:
                 self.libs[irrep].Q = self.make_Q(irrep, by_parts, debug)
-        self.find_scales()
+        if not self.dynamic_data_loading:
+            self.find_scales()
         for irrep in self.irreps:
             self.libs[irrep].col_weights = [self.get_char_size(term) for term in self.libs[irrep].terms]
             #print('Irrep', irrep, '; weights', self.libs[irrep].col_weights)
