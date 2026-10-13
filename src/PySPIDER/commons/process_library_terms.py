@@ -485,7 +485,7 @@ class AbstractDataset(object): # template for structure of all data associated w
                 opts = dict(options)
                 if (name in {"truncated-cc-grid", "truncated-cg-grid", "moment-matching"}
                         and opts.get("nodes") is None
-                        and "num_intervals" not in opts and "num_nodes" not in opts):
+                        and "num_nodes" not in opts):
                     # With no parent-node specification, use the actual slice.
                     opts["nodes"] = g
                     opts.setdefault("interval", (float(np.min(g)), float(np.max(g))))
