@@ -415,9 +415,7 @@ def chebyshev_gauss_weights(
 
     Examples
     --------
-    Integrate f(x) = x**2 on [0, 2] using four interior nodes.
-    These weights integrate with respect to dx, not the singular
-    Gauss-Chebyshev measure:
+    Integrate f(x) = x**2 on [0, 2] using four interior nodes:
 
     >>> nodes = mapped_chebyshev_gauss_nodes(4, 0.0, 2.0)
     >>> weights = chebyshev_gauss_weights(4, 0.0, 2.0)
@@ -464,7 +462,7 @@ def _compute_moments(
     Returns
     -------
     np.ndarray
-        Array of moments mu_0, ..., mu_max_degree.
+        Array of moments mu_0,..., mu_max_degree.
     """
     if weight is not None:
         _ensure_weight_ready(weight)
@@ -511,16 +509,15 @@ def moment_matched_quad_weights(
 
     Notes
     -----
-    Coordinates are used as supplied; this routine does not normalize them.
-    For a physical interval [a, b], callers should normally solve at
-    s = (x - (a+b)/2) / H on [-1, 1], H = (b-a)/2, and multiply the
-    resulting integral by H. Transform a physical weight consistently:
+    Coordinates are used as supplied; this routine does not shift or rescale
+    them. For a physical interval [a, b], callers should generally map the
+    nodes onto [-1, 1] using s = (x - (a+b)/2) / H, where H = (b-a)/2.
+    Pass these s coordinates and bounds [-1, 1] to this routine, then multiply
+    the weighted sum of the function samples by H to account for dx = H*ds.
+    Transform a physical weight consistently:
     W(x) becomes W((a+b)/2 + H*s), whereas a domain-local weight is W(s).
 
-    Numerical conditioning depends on the nodes and degree even after
-    normalization. In particular, degree=len(nodes)-1 may be unsuitable
-    for near-uniform grids or truncated subsets. Callers should select
-    degree and check convergence for their data.
+    Callers should select degree and check convergence for their data.
 
     Examples
     --------
@@ -532,8 +529,9 @@ def moment_matched_quad_weights(
     >>> print(f"{np.dot(weights, nodes**2):.6f}")
     0.666667
 
-    For physical coordinates, normalize the nodes and include the
-    integration Jacobian. Here f(x) = x**2 is integrated on [2, 6]:
+    For physical coordinates, shift and rescale the nodes onto [-1, 1],
+    then multiply the weighted sum by the interval half-width.
+    Here f(x) = x**2 is integrated on [2, 6]:
 
     >>> x = np.array([2.0, 2.8, 4.4, 6.0])
     >>> a, b = 2.0, 6.0
