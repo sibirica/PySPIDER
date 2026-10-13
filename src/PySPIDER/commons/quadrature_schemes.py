@@ -90,7 +90,7 @@ def mapped_chebyshev_gauss_nodes(n: int, a: float, b: float) -> np.ndarray:
         raise ValueError("n must be >= 1")
     return (0.5 * (a + b) + 0.5 * (b - a) * chebpts1(n))
 
-def truncated_chebyshev_nodes(N: int, a: float, b: float) -> np.ndarray:
+def truncated_chebyshev_nodes(n: int, a: float, b: float) -> np.ndarray:
     """
     Return the Chebyshev-Lobatto nodes that fall within [a, b].
 
@@ -100,8 +100,8 @@ def truncated_chebyshev_nodes(N: int, a: float, b: float) -> np.ndarray:
 
     Parameters
     ----------
-    N : int
-        Number of intervals of the underlying reference grid.
+    n : int
+        Number of nodes of the underlying reference grid.
     a : float
         Left endpoint of the retained interval.
     b : float
@@ -119,20 +119,22 @@ def truncated_chebyshev_nodes(N: int, a: float, b: float) -> np.ndarray:
     >>> np.round(parent, 4)
     array([-1.    , -0.9239, -0.7071, -0.3827,  0.    ,  0.3827,  0.7071,
             0.9239,  1.    ])
-    >>> nodes = truncated_chebyshev_nodes(8, -0.5, 0.5)
+    >>> nodes = truncated_chebyshev_nodes(9, -0.5, 0.5)
     >>> np.round(nodes, 4)
     array([-0.3827,  0.    ,  0.3827])
 
     """
     _validate_interval(a, b)
-    nodes = chebpts2(N + 1)
+    if n < 1:
+        raise ValueError("n must be >= 1")
+    nodes = chebpts2(n)
     tol = np.finfo(float).eps * max(abs(a), abs(b), 1.0)
     mask = (nodes >= a - tol) & (nodes <= b + tol)
     kept = nodes[mask]
     if kept.size == 0:
         raise ValueError(
-            f"No Chebyshev-Lobatto nodes from reference grid N = {N} lie in [{a}, {b}]. "
-            "Increase num_intervals or widen the interval."
+            f"No Chebyshev-Lobatto nodes from reference grid n = {n} lie in [{a}, {b}]. "
+            "Increase num_nodes or widen the interval."
         )
     return kept
 
@@ -315,7 +317,7 @@ def _fejer_weights_from_moments(mu: np.ndarray) -> np.ndarray:
     return (dct(np.asarray(mu, dtype=float), type=3) / n)[::-1]
 
 def clenshaw_curtis_weights(
-    num_intervals: int,
+    num_nodes: int,
     a: float = -1.0,
     b: float = 1.0,
     *,
@@ -335,8 +337,8 @@ def clenshaw_curtis_weights(
 
     Parameters
     ----------
-    num_intervals : int
-        Number of grid intervals N; the grid has N+1 nodes.
+    num_nodes : int
+        Number of Lobatto nodes; must be at least two.
     a, b : float, optional
         Interval endpoints; default [-1, 1].
     weight : optional
@@ -347,7 +349,7 @@ def clenshaw_curtis_weights(
     Returns
     -------
     np.ndarray
-        Array of N+1 quadrature weights in ascending node order.
+        Array of num_nodes quadrature weights in ascending node order.
 
     Examples
     --------
@@ -355,7 +357,7 @@ def clenshaw_curtis_weights(
 
     >>> nodes = mapped_chebyshev_nodes(5, 0.0, 2.0)
     >>> values = nodes**2
-    >>> weights = clenshaw_curtis_weights(4, 0.0, 2.0)
+    >>> weights = clenshaw_curtis_weights(5, 0.0, 2.0)
     >>> print(f"{np.dot(weights, values):.6f}")
     2.666667
 
@@ -365,15 +367,14 @@ def clenshaw_curtis_weights(
 
     >>> from PySPIDER.commons.process_library_terms import Weight
     >>> weight = Weight(m=[2], q=[0], k=[0], dxs=[1.0])
-    >>> weights = clenshaw_curtis_weights(4, 0.0, 2.0, weight=weight)
+    >>> weights = clenshaw_curtis_weights(5, 0.0, 2.0, weight=weight)
     >>> print(f"{np.dot(weights, np.ones_like(nodes)):.6f}")
     1.066667
     """
     _validate_interval(a, b)
-    N = num_intervals
-    if N < 1:
-        raise ValueError("num_intervals must be >= 1")
-    mu = _compute_moments(-1.0, 1.0, N, weight=weight, axis=axis)
+    if num_nodes < 2:
+        raise ValueError("num_nodes must be >= 2")
+    mu = _compute_moments(-1.0, 1.0, num_nodes - 1, weight=weight, axis=axis)
     return 0.5 * (b - a) * _clenshaw_curtis_from_moments(mu)
 
 def chebyshev_gauss_weights(
