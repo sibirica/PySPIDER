@@ -14,7 +14,7 @@ def _validate_interval(a: float, b: float) -> None:
     if a > b:
         raise ValueError(f"interval endpoints must satisfy a <= b, got ({a}, {b})")
 
-def mapped_chebyshev_nodes(N: int, a: float, b: float) -> np.ndarray:
+def mapped_chebyshev_nodes(n: int, a: float, b: float) -> np.ndarray:
     """
     Affinely map the Chebyshev-Lobatto nodes from [-1, 1] onto [a, b].
 
@@ -23,8 +23,8 @@ def mapped_chebyshev_nodes(N: int, a: float, b: float) -> np.ndarray:
 
     Parameters
     ----------
-    N : int
-        Number of intervals; produces N+1 nodes.
+    n : int
+        Number of nodes to be produced.
     a : float
         Left endpoint of the target interval.
     b : float
@@ -33,11 +33,23 @@ def mapped_chebyshev_nodes(N: int, a: float, b: float) -> np.ndarray:
     Returns
     -------
     np.ndarray
-        Array of N+1 nodes mapped onto [a, b].
+        Array of n nodes mapped onto [a, b].
+
+    Examples
+    --------
+
+    >>> reference_nodes = mapped_chebyshev_nodes(5, -1.0, 1.0)
+    >>> np.round(reference_nodes, 4)
+    array([-1.    , -0.7071,  0.    ,  0.7071,  1.    ])
+    >>> nodes = mapped_chebyshev_nodes(4, 2.0, 6.0)
+    >>> np.round(nodes, 4)
+    array([2., 3., 5., 6.])
+
     """
     _validate_interval(a, b)
-    x = chebpts2(N + 1)
-    return (0.5 * (a + b) + 0.5 * (b - a) * x)
+    if n < 1:
+        raise ValueError("n must be >= 1")
+    return (0.5 * (a + b) + 0.5 * (b - a) * chebpts2(n))
 
 def mapped_chebyshev_gauss_nodes(n: int, a: float, b: float) -> np.ndarray:
     """
@@ -51,7 +63,7 @@ def mapped_chebyshev_gauss_nodes(n: int, a: float, b: float) -> np.ndarray:
     Parameters
     ----------
     n : int
-        Number of nodes (spectral modes); produces n nodes.
+        Number of nodes to be produced.
     a : float
         Left endpoint of the target interval.
     b : float
@@ -61,6 +73,17 @@ def mapped_chebyshev_gauss_nodes(n: int, a: float, b: float) -> np.ndarray:
     -------
     np.ndarray
         Array of n nodes mapped onto [a, b].
+
+    Examples
+    --------
+
+    >>> nodes = mapped_chebyshev_gauss_nodes(5, 2.0, 6.0)
+    >>> np.round(nodes, 4)
+    array([2.0979, 2.8244, 4.    , 5.1756, 5.9021])
+    >>> reference_nodes = mapped_chebyshev_gauss_nodes(4, -1.0, 1.0)
+    >>> np.round(reference_nodes, 4)
+    array([-0.9239, -0.3827,  0.3827,  0.9239])
+
     """
     _validate_interval(a, b)
     if n < 1:
@@ -73,7 +96,7 @@ def truncated_chebyshev_nodes(N: int, a: float, b: float) -> np.ndarray:
 
     The full reference grid is generated with
     `numpy.polynomial.chebyshev.chebpts2` and only the subset lying in
-    [a, b] (within a floating-point tolerance) is retained, sorted ascending.
+    [a, b] (within a floating point tolerance) is retained, sorted ascending.
 
     Parameters
     ----------
@@ -88,6 +111,18 @@ def truncated_chebyshev_nodes(N: int, a: float, b: float) -> np.ndarray:
     -------
     np.ndarray
         Array of the reference nodes contained in [a, b].
+
+    Examples
+    --------
+
+    >>> parent = mapped_chebyshev_nodes(9, -1.0, 1.0)
+    >>> np.round(parent, 4)
+    array([-1.    , -0.9239, -0.7071, -0.3827,  0.    ,  0.3827,  0.7071,
+            0.9239,  1.    ])
+    >>> nodes = truncated_chebyshev_nodes(8, -0.5, 0.5)
+    >>> np.round(nodes, 4)
+    array([-0.3827,  0.    ,  0.3827])
+
     """
     _validate_interval(a, b)
     nodes = chebpts2(N + 1)
@@ -108,7 +143,7 @@ def truncated_chebyshev_gauss_nodes(n: int, a: float, b: float) -> np.ndarray:
     The full reference grid is generated with
     `numpy.polynomial.chebyshev.chebpts1` (the first-kind / interior-node
     grid on [-1, 1]) and only the subset lying in [a, b] (within a
-    floating-point tolerance) is retained, sorted ascending.
+    floating point tolerance) is retained, sorted ascending.
 
     Parameters
     ----------
@@ -123,6 +158,18 @@ def truncated_chebyshev_gauss_nodes(n: int, a: float, b: float) -> np.ndarray:
     -------
     np.ndarray
         Array of the reference Gauss nodes contained in [a, b].
+
+    Examples
+    --------
+
+    >>> parent = mapped_chebyshev_gauss_nodes(8, -1.0, 1.0)
+    >>> np.round(parent, 4)
+    array([-0.9808, -0.8315, -0.5556, -0.1951,  0.1951,  0.5556,  0.8315,
+            0.9808])
+    >>> nodes = truncated_chebyshev_gauss_nodes(8, -0.3, 0.3)
+    >>> np.round(nodes, 4)
+    array([-0.1951,  0.1951])
+
     """
     _validate_interval(a, b)
     if n < 1:
@@ -140,24 +187,24 @@ def truncated_chebyshev_gauss_nodes(n: int, a: float, b: float) -> np.ndarray:
 
 def _clenshaw_curtis_from_moments(mu: np.ndarray) -> np.ndarray:
     """
-    Compute Chebyshev coefficients from Lobatto-grid samples via a DCT-I.
+    Compute Clenshaw-Curtis quadrature weights using DCT-I.
 
-    Given samples at the Chebyshev-Lobatto nodes, returns the coefficients
-    a_k of the expansion f(x) ≈ sum_{k=0}^{N} a_k T_k(x).
+    Given moments of the form mu_k = integral_-1^1 w(x) T_k(x) dx, calculates
+    quadrature weights using scipy's DCT-I.
 
     Parameters
     ----------
-    f_values : np.ndarray
-        Samples of f at the N+1 Lobatto nodes.
+    mu : np.ndarray
+        1D Array where the kth entry equals integral_-1^1 w(x) T_k(x) dx
 
     Returns
     -------
     np.ndarray
-        Chebyshev coefficients a_0, ..., a_N.
+        Clenshaw-Curtis quadrature weights A_0, A_1,..., A_{len(mu)-1} sorted according to node ascending order.
     """
     N = mu.shape[0] - 1
     if N < 1:
-        raise ValueError("At least two sample points (N>=1) are required")
+        raise ValueError("At least two moments (N>=1) are required")
     a = dct(np.asarray(mu, dtype=float), type=1) / N
     a[0] *= 0.5
     a[-1] *= 0.5
@@ -187,6 +234,7 @@ def _polynomial_weighted_moments(poly, a: float, b: float, max_degree: int) -> n
     for i, ai in enumerate(a_w):
         if ai == 0.0:
             continue
+        # T_i T_j = (T_{i+j} + T_{|i-j|}) / 2
         mu += 0.5 * ai * (I[i + js] + I[np.abs(i - js)])
     return mu
 
@@ -220,13 +268,14 @@ def _mapped_lobatto_reference_degree(nodes: np.ndarray, a: float, b: float) -> O
     Return N when nodes are a full Lobatto grid affinely mapped onto [a, b].
 
     Accepts ascending or descending node orderings.
+    Returns None when the nodes do not match a full mapped Lobatto grid.
     """
     nodes = np.asarray(nodes, dtype=float)
     if nodes.size < 2:
         return None
     _validate_interval(a, b)
     N = nodes.shape[0] - 1
-    expected = mapped_chebyshev_nodes(N, a, b)
+    expected = mapped_chebyshev_nodes(N + 1, a, b)
     if np.allclose(nodes, expected, rtol=0, atol=1e-12):
         return N
     if np.allclose(nodes, expected[::-1], rtol=0, atol=1e-12):
@@ -239,6 +288,7 @@ def _mapped_gauss_reference_degree(nodes: np.ndarray, a: float, b: float) -> Opt
 
     Accepts ascending or descending node orderings. n is the number of
     Gauss nodes, not the number of Lobatto intervals.
+    Returns None when the nodes do not match a full mapped Gauss grid.
     """
     nodes = np.asarray(nodes, dtype=float)
     if nodes.size < 1:
@@ -281,7 +331,7 @@ def clenshaw_curtis_weights(
 
     where s maps [a, b] onto [-1, 1]. ``w`` is 1 or one axis of a
     PySPIDER ``Weight``. Uses reference Clenshaw-Curtis weights times
-    the affine Jacobian (b-a)/2. Weights are in ascending order.
+    the affine Jacobian (b-a)/2. Weights are aligned with ascending nodes.
 
     Parameters
     ----------
@@ -298,6 +348,26 @@ def clenshaw_curtis_weights(
     -------
     np.ndarray
         Array of N+1 quadrature weights in ascending node order.
+
+    Examples
+    --------
+    Integrate f(x) = x**2 on [0, 2] without a polynomial weight:
+
+    >>> nodes = mapped_chebyshev_nodes(5, 0.0, 2.0)
+    >>> values = nodes**2
+    >>> weights = clenshaw_curtis_weights(4, 0.0, 2.0)
+    >>> print(f"{np.dot(weights, values):.6f}")
+    2.666667
+
+    Include the polynomial weight W(s) = (s**2 - 1)**2, with
+    s = x - 1 on [0, 2]. Pass raw function samples: the quadrature
+    weights already include W, so do not multiply the samples by it.
+
+    >>> from PySPIDER.commons.process_library_terms import Weight
+    >>> weight = Weight(m=[2], q=[0], k=[0], dxs=[1.0])
+    >>> weights = clenshaw_curtis_weights(4, 0.0, 2.0, weight=weight)
+    >>> print(f"{np.dot(weights, np.ones_like(nodes)):.6f}")
+    1.066667
     """
     _validate_interval(a, b)
     N = num_intervals
@@ -324,7 +394,7 @@ def chebyshev_gauss_weights(
     where s maps [a, b] onto [-1, 1] and the nodes are the roots of T_n
     (first-kind / interior Chebyshev-Gauss grid). ``w`` is 1 or one axis of a
     PySPIDER ``Weight``. Uses reference DCT-III (Fejér-I) weights times the
-    affine Jacobian (b-a)/2. Weights are in ascending order.
+    affine Jacobian (b-a)/2. Weights are aligned with ascending nodes.
 
     Parameters
     ----------
@@ -341,6 +411,17 @@ def chebyshev_gauss_weights(
     -------
     np.ndarray
         Array of n quadrature weights in ascending node order.
+
+    Examples
+    --------
+    Integrate f(x) = x**2 on [0, 2] using four interior nodes.
+    These weights integrate with respect to dx, not the singular
+    Gauss-Chebyshev measure:
+
+    >>> nodes = mapped_chebyshev_gauss_nodes(4, 0.0, 2.0)
+    >>> weights = chebyshev_gauss_weights(4, 0.0, 2.0)
+    >>> print(f"{np.dot(weights, nodes**2):.6f}")
+    2.666667
     """
     _validate_interval(a, b)
     n = num_nodes
@@ -438,8 +519,29 @@ def moment_matched_quad_weights(
     Numerical conditioning depends on the nodes and degree even after
     normalization. In particular, degree=len(nodes)-1 may be unsuitable
     for near-uniform grids or truncated subsets. Callers should select
-    degree and check convergence for their data. See the moment-matching
-    usage section in tutorials/03_Quadrature.ipynb for a worked example.
+    degree and check convergence for their data.
+
+    Examples
+    --------
+    Match degree two on four irregular nodes. This deliberately uses
+    a lower degree than len(nodes)-1:
+
+    >>> nodes = np.array([-1.0, -0.4, 0.2, 1.0])
+    >>> weights = moment_matched_quad_weights(nodes, -1.0, 1.0, degree=2)
+    >>> print(f"{np.dot(weights, nodes**2):.6f}")
+    0.666667
+
+    For physical coordinates, normalize the nodes and include the
+    integration Jacobian. Here f(x) = x**2 is integrated on [2, 6]:
+
+    >>> x = np.array([2.0, 2.8, 4.4, 6.0])
+    >>> a, b = 2.0, 6.0
+    >>> half_width = (b - a) / 2.0
+    >>> s = (x - (a + b) / 2.0) / half_width
+    >>> weights = moment_matched_quad_weights(s, -1.0, 1.0, degree=2)
+    >>> result = half_width * np.dot(weights, x**2)
+    >>> print(f"{result:.6f}")
+    69.333333
     """
     nodes = np.asarray(nodes, dtype=float)
     _validate_interval(a, b)
