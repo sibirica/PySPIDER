@@ -292,9 +292,8 @@ def int_arr(arr, schemes_and_options=None, weight=None, *, domain_local_weight=F
 
     Call ``int_arr(values, schemes, weight=weight)`` to select a rule per
     axis. Older calls of the form ``int_arr(weighted_values, dxs=dxs)``
-    are also accepted. They use a spacing of 1 between consecutive array
-    entries, ignoring their actual physical spacing, as used in the
-    ``trapezoidal`` scheme.
+    are also accepted. They assume a uniform spacing of array entries, as used
+    in the ``trapezoidal`` scheme.
 
     Parameters
     ----------
