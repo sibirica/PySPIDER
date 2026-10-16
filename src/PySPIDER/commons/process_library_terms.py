@@ -16,6 +16,7 @@ from .z3base import (
 )
 from .library import LibraryTerm, ConstantTerm, Observable, ES_prod
 from .weight import weight_1d
+from .integration import int_arr, _scheme_and_opts, _quadrature_nodes_and_interval
 
 # if we want to use integration domains with different sizes & spacings, it might be
 # better to store that information within this object as well
@@ -56,7 +57,7 @@ class Weight(object): # scalar-valued Legendre polynomial weight function (may r
     m: list[int]
     q: list[int]
     k: list[int]
-    dxs: Iterable[float] = None
+    dxs: Iterable[float] = None # physical support half-widths, not sample spacings
     n_dimensions: int = None
     n_spatial_dim: int = None
     scale: float = 1
@@ -73,7 +74,7 @@ class Weight(object): # scalar-valued Legendre polynomial weight function (may r
         self.ready = True
         self.weight_objs = [weight_1d(m, q, k, dx) for (m, q, k, dx) in zip(self.m, self.q, self.k, self.dxs)]
 
-    def get_weight_array(self, dims):
+    def get_weight_array(self, dims): # May now be redundant with the addition of the quadrature infrastructure
         if not self.ready:
             self.make_weight_objs()
         weights_eval = [weight.linspace(dim)[1] for (weight, dim) in zip(self.weight_objs, dims)]
@@ -373,7 +374,15 @@ class AbstractDataset(object): # template for structure of all data associated w
     cleanup_cache: bool = True # whether to clean up field_dict entries after parallel domain processing
     field_dict: dict[tuple[Any, ...], np.ndarray[float]] = None 
     
-    dxs: list[float] = None # grid spacings
+    dxs: list[float] = None # uniform sample spacing per axis (FinDiff / uniform coords only)
+    
+    # Optional per-axis sample coordinates. None, or a list of length
+    # n_dimensions whose entries are 1-D arrays matching data shape along
+    # that axis (physical sample locations), or None (axis stays uniform
+    # via dxs[i]). Set at construction; FinDiff uses the coordinate array
+    # on that axis. Quadrature scheme choice stays in schemes_and_options;
+    # scheme handlers validate that the samples match what the rule assumes.
+    grids: list = None
     weight_dxs: list[float] = None
     scalar_weights: list[Weight] = None
     tensor_weight_basis: dict[tuple[Union[int, Irrep, Weight], ...], TensorWeightBasis] = field(default_factory=dict)  # (irrep, weight) -> stack
@@ -393,6 +402,17 @@ class AbstractDataset(object): # template for structure of all data associated w
 
     integrated_terms_tuples: list[tuple[LibraryTerm, Weight, LibraryTerm, TensorWeight]] = None # for tracking parallel domain tasks
 
+    # Quadrature schemes and corresponding options.
+    # Omitted axes use trapezoidal. See int_arr for options.
+    # The weight function is passed separately into int_arr; this dict only
+    # selects the rule per axis
+    #   "trapezoidal"       composite trapezoidal rule
+    #   "truncated-cc-grid" Chebyshev subgrid (moment-matching on a Lobatto subset)
+    #   "clenshaw-curtis"   full mapped Lobatto grid
+    #   "moment-matching"   arbitrary nodes
+    # e.g. {2: "clenshaw-curtis"}
+    schemes_and_options: dict = field(default_factory=dict)
+
     def __post_init__(self):
         self.n_dimensions = len(self.world_size) # number of dimensions (spatial + temporal)
         # consider n_spatial_dim field
@@ -401,6 +421,122 @@ class AbstractDataset(object): # template for structure of all data associated w
             self.metric = Metric(n_dimensions=self.n_dimensions)
         else:
             self.metric_is_identity = False
+        if self.grids is not None:
+            self._validate_grids()
+
+    def _axis_sample_count(self, axis: int) -> int:
+        """Number of samples along ``axis`` from a ``data_dict`` array."""
+        return next(iter(self.data_dict.values())).shape[axis]
+
+    def _coerce_grid_coords(self, axis: int, coords) -> np.ndarray:
+        """Validate and coerce one axis of sample coordinates to a float array."""
+        coords = np.asarray(coords, dtype=float)
+        n = self._axis_sample_count(axis)
+        if coords.ndim != 1 or coords.shape[0] != n:
+            raise ValueError(
+                f"grids[{axis}] must be 1-D of length data shape[{axis}]={n}, "
+                f"got shape {coords.shape}"
+            )
+        if not np.all(np.isfinite(coords)):
+            raise ValueError(f"grids[{axis}] must be finite")
+        if np.any(np.diff(coords) == 0):
+            raise ValueError(
+                f"grids[{axis}] must be strictly monotonic (no repeated nodes)"
+            )
+        return coords
+
+    def _validate_grids(self) -> None:
+        if len(self.grids) != self.n_dimensions:
+            raise ValueError(
+                f"grids must have length n_dimensions={self.n_dimensions}, "
+                f"got {len(self.grids)}"
+            )
+        if self.dxs is None:
+            self.dxs = [1.0] * self.n_dimensions
+        for i, g in enumerate(self.grids):
+            if g is None:
+                continue
+            self.grids[i] = self._coerce_grid_coords(i, g)
+
+    def _weight_dxs_for_domain(self, domain: IntegrationDomain) -> list[float]:
+        """Positive physical support half-widths for domain-local weights."""
+        return self._quadrature_for_domain(domain)[1]
+
+    def _quadrature_for_domain(self, domain: IntegrationDomain) -> tuple[dict, list[float]]:
+        """Resolve quadrature coordinates and physical weight scales together.
+
+        Scheme nodes can be in physical units or an affine reference coordinate.
+        Match them to the physical samples in grids to recover the scale of the
+        *integration interval*, including unsampled Gauss endpoints. A weight
+        template is never mutated: each domain obtains its own half-widths.
+        """
+        schemes = dict(self.schemes_and_options)
+        out = []
+        for i in range(self.n_dimensions):
+            n = domain.shape[i]
+            name, options = _scheme_and_opts(schemes.get(i, "trapezoidal"), i)
+            if n < 2:
+                out.append(0.0)
+            elif self.grids is not None and self.grids[i] is not None:
+                g = self._axis_coords(i, domain)
+                if name == "trapezoidal":
+                    out.append(abs(float(g[-1] - g[0])) / 2)
+                    continue
+                opts = dict(options)
+                if (name in {"truncated-cc-grid", "truncated-cg-grid", "moment-matching"}
+                        and opts.get("nodes") is None
+                        and "num_nodes" not in opts):
+                    # With no parent-node specification, use the actual slice.
+                    opts["nodes"] = g
+                    opts.setdefault("interval", (float(np.min(g)), float(np.max(g))))
+                nodes, (a, b) = _quadrature_nodes_and_interval(name, n, opts)
+                if options.get("nodes") is None and (nodes[-1] - nodes[0]) * (g[-1] - g[0]) < 0:
+                    nodes = nodes[::-1]
+                if b <= a or nodes[-1] == nodes[0]:
+                    raise ValueError("weight support must have positive width")
+                physical_scale = float((g[-1] - g[0]) / (nodes[-1] - nodes[0]))
+                mapped = g[0] + physical_scale * (nodes - nodes[0])
+                if physical_scale <= 0 or not np.allclose(mapped, g, rtol=1e-10, atol=1e-12):
+                    raise ValueError(
+                        f"axis {i}: {name} nodes must match the domain's physical grid "
+                        "under an increasing affine map; use a truncated rule for subdomains"
+                    )
+                opts["nodes"] = nodes
+                schemes[i] = {name: opts}
+                out.append(physical_scale * (b - a) / 2)
+            else:
+                if self.dxs is None:
+                    raise ValueError("dxs must be set for uniform-axis weight scaling")
+                out.append((n - 1) / 2 * abs(float(self.dxs[i])))
+        return schemes, out
+
+    def _axis_coords(self, axis: int, domain: IntegrationDomain | None = None) -> np.ndarray:
+        """Physical sample coordinates along ``axis``, optionally sliced to a domain."""
+        if not 0 <= axis < self.n_dimensions:
+            raise ValueError(f"axis {axis} out of range for ndim={self.n_dimensions}")
+        if self.grids is not None and self.grids[axis] is not None:
+            g = np.asarray(self.grids[axis], dtype=float)
+        else:
+            if self.dxs is None:
+                raise ValueError("dxs must be set to build uniform axis coordinates")
+            n = self._axis_sample_count(axis)
+            g = np.arange(n, dtype=float) * float(self.dxs[axis])
+        if domain is None:
+            return g
+        lo, hi = domain.min_corner[axis], domain.max_corner[axis]
+        return g[lo:hi + 1]
+
+    def diff_spacings(self, domain: IntegrationDomain) -> list:
+        """Per-axis FinDiff spacings for ``domain``: scalar dx or coordinate array."""
+        out = []
+        for i in range(self.n_dimensions):
+            if self.grids is not None and self.grids[i] is not None:
+                out.append(self._axis_coords(i, domain))
+            else:
+                if self.dxs is None:
+                    raise ValueError("dxs must be set for uniform-axis differentiation")
+                out.append(float(self.dxs[i]))
+        return out
 
     def resample(self): # should return SRD that is instance of implementing classes, so this is not type-hinted
         new_srd = replace(self, domains=None, libs={irrep: lib.clear_results() for irrep, lib in self.libs.items()})
@@ -427,7 +563,11 @@ class AbstractDataset(object): # template for structure of all data associated w
     def make_weights(self, m: int, q_lists: list[list[int]] | None = None, qmax_list: list[int] | None = None,qmax: int | None = None, symmetry: str | None = None) -> None: # populate weights/set weight_dxs
         # symmetry applies only when using qmax (legacy behavior). symmetry: {None, "even", "odd"}
         self.weights = []
-        self.weight_dxs = [(width - 1) / 2 * dx for width, dx in zip(self.domain_size, self.dxs)]
+        # Store a representative domain's scale in the shared template; eval_on_domain
+        # replaces it locally when another domain has a different physical extent.
+        self.weight_dxs = (self._weight_dxs_for_domain(self.domains[0]) if self.domains
+                           else [(width - 1) / 2 * abs(dx)
+                                 for width, dx in zip(self.domain_size, self.dxs)])
         n_dims = self.n_dimensions
 
         if q_lists is not None:
@@ -478,16 +618,18 @@ class AbstractDataset(object): # template for structure of all data associated w
             raise NotImplemented
     
     def eval_on_domain(self, term, weight, domain, debug=False):
-        #print('weight_array hash', hash(weight.get_weight_array(domain.shape).tostring()))
-        term_weight_product = self.eval_term(term, domain, debug) * weight.get_weight_array(domain.shape)
+        term_arr = self.eval_term(term, domain, debug)
         if debug:
-            filtered_flat = list(filter(lambda x: x!=0, term_weight_product.flat))
+            filtered_flat = list(filter(lambda x: x!=0, term_arr.flat))
             lenf = len(filtered_flat)
             if lenf==0:
                 print("ARRAY IS 0")
             #else:
             #    print("MIDDLE NZ VALUE OF ARRAY:", '{:.2E}'.format(filtered_flat[lenf//2])) # middle of the array
-        result = int_arr(term_weight_product, dxs=self.dxs)
+        schemes, domain_dxs = self._quadrature_for_domain(domain)
+        if tuple(weight.dxs) != tuple(domain_dxs):
+            weight = replace(weight, dxs=domain_dxs, ready=False)
+        result = int_arr(term_arr, schemes, weight=weight, domain_local_weight=True)
         #if debug:
         #    print('Integrated result', result)
         return result
@@ -683,16 +825,6 @@ def get_slice(arr, domain):
         arr_slice = arr_slice[tuple(idx)]
     return arr_slice
 
-def int_arr(arr, dxs=None):  # integrate an array of values on an integration domain
-    if dxs is None:
-        dxs = [1] * len(arr.shape)
-    dx = dxs[0]
-    integral = np.trapz(arr, axis=0)
-    if len(dxs) == 1:
-        return integral
-    else:
-        return int_arr(integral, dxs[1:])
-
 def int_by_parts(term, weight, by_parts=True, dim=0):
     if weight.scale == 0 or not by_parts: # no point - the weight is zero anyway or we were asked not to
         yield term, weight
@@ -787,11 +919,22 @@ def diff(data, dorders, dxs=None, acc=6):
     # for spatial directions can use finite differences or spectral differentiation. For time, only the former.
     # in any case, it's probably best to pre-compute the derivatives on the whole domains (at least up to order 2).
     # with integration by parts, there shouldn't be higher derivatives.
+    #
+    # Each entry of ``dxs`` may be a scalar spacing (uniform axis) or a 1-D
+    # coordinate array matching ``data.shape[i]`` (non-uniform axis). findiff
+    # accepts both.
     if dxs is None:
         dxs = [1] * len(dorders)
     diff_list = []
     for i, dx, order in zip(range(len(dxs)), dxs, dorders):
         if order > 0:
+            if np.ndim(dx) == 1:
+                dx = np.asarray(dx, dtype=float)
+                if dx.shape[0] != data.shape[i]:
+                    raise ValueError(
+                        f"coordinate array for axis {i} has length {dx.shape[0]} "
+                        f"but data shape[{i}]={data.shape[i]}"
+                    )
             diff_list.append((i, dx, order))
     diff_operator = FinDiff(*diff_list, acc=acc)
     return diff_operator(data)

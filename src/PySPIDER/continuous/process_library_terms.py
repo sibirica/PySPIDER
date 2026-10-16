@@ -37,7 +37,7 @@ class SRDataset(AbstractDataset):
                      for i in range(self.n_dimensions-1)]
         dimorders += [prime.derivative.torder]
         #print(prime.derivative, dimorders)
-        return (diff(data_slice, dimorders, self.dxs) 
+        return (diff(data_slice, dimorders, self.diff_spacings(domain))
                 if sum(dimorders) > 0 else data_slice)
     
     def make_libraries(self, **kwargs):

@@ -69,3 +69,11 @@
 ### discrete/coarse_grain_utils.py
 - gaussian_coarse_grain2d / kd_gaussian_coarse_grain2d: Coarse-grained estimates using Gaussian kernels; KDTree variant restricts to nearby points for speed.
 - periodic_* variants: Periodic boundary handling via image replication with the same kernels.
+
+### commons/integration.py
+- int_arr(...): Integrates an array using the rules in quadrature_schemes.py. `schemes_and_options` selects a rule per axis.
+- `Weight.dxs` contains physical support half-widths H, while `SRDataset.dxs` contains uniform sample spacings. Nonuniform sample coordinates belong in `SRDataset.grids`.
+- Weights are polynomials in s=(x-c)/H on [-1,1], where c is the support midpoint. Their kth physical derivatives include H**(-k). Gauss support extends beyond the first and last sample; descending storage order does not change H's sign.
+- Dataset evaluation resolves the physical half-width for each domain and uses `int_arr(..., domain_local_weight=True)`. This maps truncated-grid and moment-matching weights to that domain, preserving the boundary zeros needed for integration by parts. Shared weight templates are not modified during evaluation.
+- For subdomains of an axis with `grids` supplied, selecting `truncated-cc-grid`, `truncated-cg-grid`, or `moment-matching` without node/parent-grid options uses the actual coordinate slice and its endpoint interval. Explicit nodes and intervals remain supported, including affine reference coordinates. Full CC/Gauss rules require a complete matching grid.
+- Standalone `int_arr` retains its original default: truncated and moment-matching rules integrate W(x)f(x) on the specified interval. Set `domain_local_weight=True` explicitly to instead use W((x-c)/H); supply physical half-widths in the Weight when derivatives are involved.

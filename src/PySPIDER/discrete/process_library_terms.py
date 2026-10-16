@@ -112,13 +112,21 @@ class SRDataset(AbstractDataset):
         super().__post_init__()
         self.scaled_sigma = self.kernel_sigma * self.cg_res
         self.scaled_pts = self.particle_pos * self.cg_res
-        # spacings of sampling grid
-        self.dxs = ([1 / self.cg_res] * (self.n_dimensions - 1) + 
-                    [float(self.deltat)])
+        # Uniform coarse-grained lattice spacing; non-uniform axes use grids in FinDiff only.
+        self.dxs = [1 / self.cg_res] * (self.n_dimensions - 1) + [float(self.deltat)]
         self.rho_domain_stds = None  # Initialize rho statistics storage
         # self.rho_scale = (self.particle_pos.shape[0] / 
         #                   np.prod(self.world_size[:-1]))  # mean number density
         #self.cgps = set()
+
+    def _axis_sample_count(self, axis: int) -> int:
+        # data_dict holds particle fields, not the coarse-grained grid; sample counts come
+        # from the coarse-grained spatial grid and the time axis length.
+        if not 0 <= axis < self.n_dimensions:
+            raise ValueError(f"axis {axis} out of range for ndim={self.n_dimensions}")
+        if axis < self.n_dimensions - 1:
+            return int(self.world_size[axis] * self.cg_res)
+        return int(self.world_size[-1])
 
     def make_libraries(self, **kwargs):
         self.libs = dict()
@@ -360,7 +368,7 @@ class SRDataset(AbstractDataset):
         dimorders = [orders[LiteralIndex(i)] for i in range(self.n_dimensions-1)]
         dimorders += [prime.derivative.torder]
         #print(prime, dimorders, data_slice.shape, self.dxs)
-        return diff(data_slice, dimorders, self.dxs) if sum(dimorders)>0 else data_slice
+        return diff(data_slice, dimorders, self.diff_spacings(domain)) if sum(dimorders)>0 else data_slice
 
     def find_scales(self, names=None):
         # find mean/std deviation of fields in data_dict that are in names
